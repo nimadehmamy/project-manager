@@ -271,6 +271,9 @@ async function loadProjectContent(projectPath) {
         case 'todos':
             await loadTodo(projectPath);
             break;
+        case 'progress':
+            await loadProgress(projectPath);
+            break;
         case 'files':
             await loadDirectory(projectPath);
             break;
@@ -690,4 +693,457 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+
+// ==========================================
+// Progress/Tasks Tracker
+// ==========================================
+
+let currentProgressData = null;
+let progressExpandedTasks = new Set();
+
+/**
+ * Load and render Progress data
+ */
+async function loadProgress(projectPath) {
+    const contentDiv = document.getElementById('progressContent');
+    contentDiv.innerHTML = '<div class="loading">Loading progress...</div>';
+
+    try {
+        const response = await fetch(`/api/project/progress?project=${encodeURIComponent(projectPath)}`);
+        const data = await response.json();
+
+        if (data.error) {
+            contentDiv.innerHTML = `<div class="empty-state">Error: ${escapeHtml(data.error)}</div>`;
+            return;
+        }
+
+        currentProgressData = data.data;
+
+        if (!data.dir_exists) {
+            renderProgressInit(contentDiv, projectPath);
+            return;
+        }
+
+        if (!data.found) {
+            // Directory exists but no tasks.yml yet
+            await initProgress(projectPath, currentProject.split('/').pop());
+            return;
+        }
+
+        renderProgressTracker(contentDiv, data.data, projectPath);
+
+    } catch (err) {
+        contentDiv.innerHTML = `<div class="empty-state">Failed to load progress: ${escapeHtml(err.message)}</div>`;
+    }
+}
+
+/**
+ * Render the "Initialize Progress" view
+ */
+function renderProgressInit(container, projectPath) {
+    const projectName = currentProject ? currentProject.split('/').pop() : 'Project';
+    
+    container.innerHTML = `
+        <div class="progress-init">
+            <div class="progress-init-icon">📊</div>
+            <h3>Track Your Progress</h3>
+            <p>Create a task tracker for "${escapeHtml(projectName)}" to monitor<br>status, add subtasks, and track completion.</p>
+            <button class="btn btn-primary" onclick="initProgress('${escapeHtml(projectPath)}', '${escapeHtml(projectName)}')">
+                Create Task Tracker
+            </button>
+        </div>
+    `;
+}
+
+/**
+ * Initialize progress tracking for a project
+ */
+async function initProgress(projectPath, projectName) {
+    const contentDiv = document.getElementById('progressContent');
+    contentDiv.innerHTML = '<div class="loading">Creating task tracker...</div>';
+
+    try {
+        const response = await fetch('/api/project/progress/init', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project: projectPath, name: projectName })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            currentProgressData = data.data;
+            renderProgressTracker(contentDiv, data.data, projectPath);
+        } else {
+            contentDiv.innerHTML = `<div class="empty-state">Failed to create tracker: ${escapeHtml(data.error)}</div>`;
+        }
+    } catch (err) {
+        contentDiv.innerHTML = `<div class="empty-state">Error: ${escapeHtml(err.message)}</div>`;
+    }
+}
+
+/**
+ * Render the full progress tracker
+ */
+function renderProgressTracker(container, data, projectPath) {
+    const tasks = data.tasks || [];
+    const stats = calculateProgressStats(tasks);
+    
+    let html = `
+        <div class="progress-container">
+            <div class="progress-header">
+                <div class="progress-title">📊 ${escapeHtml(data.project?.name || 'Project')} Progress</div>
+                <div class="progress-actions">
+                    <button class="btn btn-primary" onclick="showAddTaskForm()">+ Add Task</button>
+                </div>
+            </div>
+            
+            <div class="progress-stats">
+                <div class="stat-card">
+                    <div class="stat-value">${stats.total}</div>
+                    <div class="stat-label">Total</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color: var(--accent-green);">${stats.completed}</div>
+                    <div class="stat-label">Done</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color: var(--accent-blue);">${stats.inProgress}</div>
+                    <div class="stat-label">In Progress</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.percentage}%</div>
+                    <div class="stat-label">Complete</div>
+                </div>
+            </div>
+            
+            <div class="progress-bar-container" style="margin-bottom: 24px;">
+                <div class="progress-bar" style="width: ${stats.percentage}%"></div>
+            </div>
+            
+            <div id="addTaskForm" style="display: none;">
+                ${renderAddTaskForm()}
+            </div>
+            
+            <ul class="task-tree">
+                ${renderTaskList(tasks, projectPath)}
+            </ul>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+/**
+ * Calculate progress statistics
+ */
+function calculateProgressStats(tasks) {
+    let total = 0;
+    let completed = 0;
+    let inProgress = 0;
+    
+    function countTask(task) {
+        total++;
+        if (task.status === 'completed') completed++;
+        else if (task.status === 'in_progress') inProgress++;
+        
+        if (task.subtasks) {
+            task.subtasks.forEach(countTask);
+        }
+    }
+    
+    tasks.forEach(countTask);
+    
+    return {
+        total,
+        completed,
+        inProgress,
+        percentage: total > 0 ? Math.round((completed / total) * 100) : 0
+    };
+}
+
+/**
+ * Render the add task form
+ */
+function renderAddTaskForm() {
+    return `
+        <div class="add-task-form">
+            <h4>Add New Task</h4>
+            <div class="form-row">
+                <input type="text" id="newTaskName" placeholder="Task name..." style="flex: 2;">
+                <select id="newTaskStatus">
+                    <option value="not_started">Not Started</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="completed">Completed</option>
+                    <option value="blocked">Blocked</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <textarea id="newTaskDescription" placeholder="Description (optional)..." style="flex: 1;"></textarea>
+            </div>
+            <div class="form-row" style="justify-content: flex-end;">
+                <button class="btn" onclick="hideAddTaskForm()">Cancel</button>
+                <button class="btn btn-primary" onclick="addTask()">Add Task</button>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Render the task list recursively
+ */
+function renderTaskList(tasks, projectPath, parentId = null) {
+    if (!tasks || tasks.length === 0) {
+        return '<li class="progress-empty">No tasks yet. Click "Add Task" to get started!</li>';
+    }
+    
+    return tasks.map((task, index) => {
+        const taskId = parentId ? `${parentId}.${index}` : `${index}`;
+        const hasSubtasks = task.subtasks && task.subtasks.length > 0;
+        const isExpanded = progressExpandedTasks.has(taskId);
+        
+        const toggleClass = hasSubtasks 
+            ? (isExpanded ? 'task-toggle expanded' : 'task-toggle collapsed')
+            : 'task-toggle leaf';
+        
+        const statusClass = task.status || 'not_started';
+        const statusLabel = formatStatusLabel(task.status);
+        
+        let html = `
+            <li class="task-item" data-task-id="${taskId}">
+                <div class="task-content">
+                    <span class="${toggleClass}" onclick="toggleTask('${taskId}')"></span>
+                    <input type="checkbox" class="task-checkbox" 
+                        ${task.status === 'completed' ? 'checked' : ''} 
+                        onchange="toggleTaskComplete('${taskId}', this.checked)">
+                    <div class="task-main">
+                        <div class="task-header">
+                            <span class="task-name ${task.status === 'completed' ? 'completed' : ''}">${escapeHtml(task.name)}</span>
+                            <select class="task-status ${statusClass}" onchange="updateTaskStatus('${taskId}', this.value)">
+                                <option value="not_started" ${task.status === 'not_started' ? 'selected' : ''}>Not Started</option>
+                                <option value="in_progress" ${task.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                                <option value="completed" ${task.status === 'completed' ? 'selected' : ''}>Completed</option>
+                                <option value="blocked" ${task.status === 'blocked' ? 'selected' : ''}>Blocked</option>
+                                <option value="cancelled" ${task.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+                            </select>
+                        </div>
+                        ${task.description ? `<div class="task-description">${escapeHtml(task.description)}</div>` : ''}
+                    </div>
+                    <div class="task-actions">
+                        <button class="task-btn" onclick="showAddSubtaskForm('${taskId}')">+ Subtask</button>
+                        <button class="task-btn delete" onclick="deleteTask('${taskId}')">🗑</button>
+                    </div>
+                </div>
+                ${hasSubtasks ? `
+                    <ul class="task-subtasks" id="subtasks-${taskId}" style="display: ${isExpanded ? 'block' : 'none'};">
+                        ${renderTaskList(task.subtasks, projectPath, taskId)}
+                    </ul>
+                ` : ''}
+            </li>
+        `;
+        
+        return html;
+    }).join('');
+}
+
+/**
+ * Format status label
+ */
+function formatStatusLabel(status) {
+    const labels = {
+        'not_started': 'Not Started',
+        'in_progress': 'In Progress',
+        'completed': 'Completed',
+        'blocked': 'Blocked',
+        'cancelled': 'Cancelled'
+    };
+    return labels[status] || 'Not Started';
+}
+
+/**
+ * Toggle task expansion
+ */
+function toggleTask(taskId) {
+    if (progressExpandedTasks.has(taskId)) {
+        progressExpandedTasks.delete(taskId);
+    } else {
+        progressExpandedTasks.add(taskId);
+    }
+    // Re-render
+    if (currentProject) {
+        loadProgress(currentProject);
+    }
+}
+
+/**
+ * Toggle task completion via checkbox
+ */
+async function toggleTaskComplete(taskId, isComplete) {
+    const newStatus = isComplete ? 'completed' : 'not_started';
+    await updateTaskStatus(taskId, newStatus);
+}
+
+/**
+ * Update task status
+ */
+async function updateTaskStatus(taskId, newStatus) {
+    if (!currentProgressData || !currentProject) return;
+    
+    // Find and update the task
+    const task = findTaskById(currentProgressData.tasks, taskId);
+    if (task) {
+        task.status = newStatus;
+        await saveProgress();
+        // Re-render to show changes
+        loadProgress(currentProject);
+    }
+}
+
+/**
+ * Find a task by its ID
+ */
+function findTaskById(tasks, taskId) {
+    const indices = taskId.split('.').map(Number);
+    let current = tasks;
+    
+    for (const index of indices) {
+        if (!current || !current[index]) return null;
+        if (indices.indexOf(index) === indices.length - 1) {
+            return current[index];
+        }
+        current = current[index].subtasks;
+    }
+    
+    return null;
+}
+
+/**
+ * Show add task form
+ */
+function showAddTaskForm() {
+    const form = document.getElementById('addTaskForm');
+    if (form) {
+        form.style.display = 'block';
+        document.getElementById('newTaskName').focus();
+    }
+}
+
+/**
+ * Hide add task form
+ */
+function hideAddTaskForm() {
+    const form = document.getElementById('addTaskForm');
+    if (form) {
+        form.style.display = 'none';
+        // Clear inputs
+        document.getElementById('newTaskName').value = '';
+        document.getElementById('newTaskDescription').value = '';
+        document.getElementById('newTaskStatus').value = 'not_started';
+    }
+}
+
+/**
+ * Add a new task
+ */
+async function addTask() {
+    const name = document.getElementById('newTaskName').value.trim();
+    const status = document.getElementById('newTaskStatus').value;
+    const description = document.getElementById('newTaskDescription').value.trim();
+    
+    if (!name) {
+        alert('Please enter a task name');
+        return;
+    }
+    
+    if (!currentProgressData) return;
+    
+    const newTask = {
+        id: Date.now().toString(),
+        name: name,
+        status: status,
+        description: description,
+        created: new Date().toISOString(),
+        subtasks: []
+    };
+    
+    currentProgressData.tasks.push(newTask);
+    
+    await saveProgress();
+    hideAddTaskForm();
+    loadProgress(currentProject);
+}
+
+/**
+ * Delete a task
+ */
+async function deleteTask(taskId) {
+    if (!confirm('Are you sure you want to delete this task?')) return;
+    
+    if (!currentProgressData) return;
+    
+    // Remove task from data
+    currentProgressData.tasks = removeTaskById(currentProgressData.tasks, taskId);
+    
+    await saveProgress();
+    loadProgress(currentProject);
+}
+
+/**
+ * Remove task by ID from task list
+ */
+function removeTaskById(tasks, taskId) {
+    const indices = taskId.split('.').map(Number);
+    
+    if (indices.length === 1) {
+        // Top-level task
+        tasks.splice(indices[0], 1);
+        return tasks;
+    }
+    
+    // Navigate to parent
+    let current = tasks;
+    for (let i = 0; i < indices.length - 1; i++) {
+        current = current[indices[i]].subtasks;
+    }
+    
+    // Remove from parent
+    current[indices[indices.length - 1]].subtasks.splice(indices[indices.length - 1], 1);
+    return tasks;
+}
+
+/**
+ * Save progress to server
+ */
+async function saveProgress() {
+    if (!currentProject || !currentProgressData) return;
+    
+    try {
+        const response = await fetch('/api/project/progress', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                project: currentProject,
+                data: currentProgressData
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+            console.error('Failed to save progress:', data.error);
+        }
+    } catch (err) {
+        console.error('Error saving progress:', err);
+    }
+}
+
+/**
+ * Show add subtask form (simplified - just adds to top for now)
+ */
+function showAddSubtaskForm(parentTaskId) {
+    // For now, just show the add task form
+    // Subtask functionality can be added later
+    showAddTaskForm();
 }

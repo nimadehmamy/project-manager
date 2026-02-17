@@ -7,6 +7,7 @@ from functools import wraps
 from pathlib import Path
 
 import paramiko
+import yaml
 from flask import (
     Flask,
     Response,
@@ -422,6 +423,187 @@ def api_project_todo():
 
     except Exception as e:
         app.logger.error(f"Error reading TODO: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# Progress/Tasks API endpoints
+PROGRESS_DIR = '.project_manager'
+PROGRESS_FILE = 'tasks.yml'
+
+DEFAULT_TASKS_STRUCTURE = {
+    'version': '1.0',
+    'project': {
+        'name': '',
+        'description': '',
+        'status': 'active'  # active, paused, archived
+    },
+    'tasks': []
+}
+
+
+@app.route('/api/project/progress')
+@require_auth
+def api_project_progress():
+    """Get progress/tasks data for a project."""
+    project = request.args.get('project', '')
+    if not project:
+        return jsonify({'error': 'No project specified'}), 400
+
+    safe_path = sanitize_path(project)
+    if safe_path is None:
+        return jsonify({'error': 'Access denied'}), 403
+
+    progress_dir = f"{safe_path}/{PROGRESS_DIR}"
+    progress_file = f"{progress_dir}/{PROGRESS_FILE}"
+
+    try:
+        client = get_ssh_client()
+        sftp = client.open_sftp()
+
+        # Check if .project_manager directory exists
+        try:
+            sftp.stat(progress_dir)
+            dir_exists = True
+        except FileNotFoundError:
+            dir_exists = False
+
+        if not dir_exists:
+            sftp.close()
+            client.close()
+            return jsonify({
+                'found': False,
+                'dir_exists': False,
+                'data': DEFAULT_TASKS_STRUCTURE
+            })
+
+        # Check if tasks.yml exists
+        try:
+            with sftp.file(progress_file, 'r') as f:
+                content = f.read().decode('utf-8')
+                data = yaml.safe_load(content) or DEFAULT_TASKS_STRUCTURE
+            sftp.close()
+            client.close()
+            return jsonify({
+                'found': True,
+                'dir_exists': True,
+                'data': data
+            })
+        except FileNotFoundError:
+            sftp.close()
+            client.close()
+            return jsonify({
+                'found': False,
+                'dir_exists': True,
+                'data': DEFAULT_TASKS_STRUCTURE
+            })
+
+    except Exception as e:
+        app.logger.error(f"Error reading progress: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/project/progress', methods=['POST'])
+@require_auth
+def api_project_progress_update():
+    """Update progress/tasks data for a project."""
+    project = request.json.get('project', '')
+    data = request.json.get('data', {})
+    
+    if not project:
+        return jsonify({'error': 'No project specified'}), 400
+
+    safe_path = sanitize_path(project)
+    if safe_path is None:
+        return jsonify({'error': 'Access denied'}), 403
+
+    progress_dir = f"{safe_path}/{PROGRESS_DIR}"
+    progress_file = f"{progress_dir}/{PROGRESS_FILE}"
+
+    try:
+        client = get_ssh_client()
+        sftp = client.open_sftp()
+
+        # Create directory if it doesn't exist
+        try:
+            sftp.mkdir(progress_dir)
+        except IOError:
+            pass  # Directory already exists
+
+        # Write tasks.yml
+        yaml_content = yaml.dump(data, default_flow_style=False, 
+                                  allow_unicode=True, sort_keys=False)
+        
+        with sftp.file(progress_file, 'w') as f:
+            f.write(yaml_content)
+        
+        sftp.close()
+        client.close()
+        
+        return jsonify({'success': True, 'message': 'Progress saved'})
+
+    except Exception as e:
+        app.logger.error(f"Error saving progress: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/project/progress/init', methods=['POST'])
+@require_auth
+def api_project_progress_init():
+    """Initialize .project_manager directory and tasks.yml."""
+    project = request.json.get('project', '')
+    project_name = request.json.get('name', 'Unnamed Project')
+    
+    if not project:
+        return jsonify({'error': 'No project specified'}), 400
+
+    safe_path = sanitize_path(project)
+    if safe_path is None:
+        return jsonify({'error': 'Access denied'}), 403
+
+    progress_dir = f"{safe_path}/{PROGRESS_DIR}"
+    progress_file = f"{progress_dir}/{PROGRESS_FILE}"
+
+    try:
+        client = get_ssh_client()
+        sftp = client.open_sftp()
+
+        # Create .project_manager directory
+        try:
+            sftp.mkdir(progress_dir)
+        except IOError:
+            pass  # Directory already exists
+
+        # Create default tasks.yml
+        default_data = DEFAULT_TASKS_STRUCTURE.copy()
+        default_data['project']['name'] = project_name
+        default_data['tasks'] = [
+            {
+                'id': '1',
+                'name': 'Getting started',
+                'status': 'not_started',
+                'description': 'Define project goals and initial tasks',
+                'created': datetime.now().isoformat(),
+                'subtasks': []
+            }
+        ]
+        
+        yaml_content = yaml.dump(default_data, default_flow_style=False,
+                                  allow_unicode=True, sort_keys=False)
+        
+        with sftp.file(progress_file, 'w') as f:
+            f.write(yaml_content)
+        
+        sftp.close()
+        client.close()
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Project tracking initialized',
+            'data': default_data
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error initializing progress: {e}")
         return jsonify({'error': str(e)}), 500
 
 

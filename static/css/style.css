@@ -832,6 +832,337 @@ body {
     flex-shrink: 0;
 }
 
+/* ===== Progress Tracker ===== */
+.progress-container {
+    max-width: 100%;
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.progress-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.progress-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.progress-stats {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.stat-card {
+    background: var(--sidebar-bg);
+    padding: 16px 24px;
+    border-radius: 8px;
+    text-align: center;
+    min-width: 100px;
+}
+
+.stat-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--accent-blue);
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-top: 4px;
+}
+
+.progress-init {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.progress-init-icon {
+    font-size: 4rem;
+    margin-bottom: 20px;
+}
+
+.progress-init h3 {
+    font-size: 1.25rem;
+    margin-bottom: 12px;
+}
+
+.progress-init p {
+    color: var(--text-muted);
+    margin-bottom: 24px;
+}
+
+/* Task Tree */
+.task-tree {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.task-tree ul {
+    list-style: none;
+    padding-left: 32px;
+    margin: 0;
+    border-left: 2px solid var(--border);
+    margin-left: 12px;
+}
+
+.task-item {
+    margin-bottom: 8px;
+}
+
+.task-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    transition: all 0.15s;
+}
+
+.task-content:hover {
+    border-color: var(--accent-blue);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.task-toggle {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.task-toggle:hover {
+    background: var(--hover-bg);
+}
+
+.task-toggle.expanded::before {
+    content: '▼';
+}
+
+.task-toggle.collapsed::before {
+    content: '▶';
+}
+
+.task-toggle.leaf {
+    visibility: hidden;
+}
+
+.task-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.task-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.task-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.task-name {
+    font-weight: 500;
+    font-size: 0.9375rem;
+    flex: 1;
+    min-width: 200px;
+}
+
+.task-name.completed {
+    text-decoration: line-through;
+    color: var(--text-muted);
+}
+
+.task-status {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.task-status:hover {
+    opacity: 0.8;
+}
+
+.task-status.not_started {
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
+.task-status.in_progress {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.task-status.completed {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.task-status.blocked {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.task-status.cancelled {
+    background: #f3f4f6;
+    color: #9ca3af;
+}
+
+.task-description {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-top: 6px;
+    line-height: 1.5;
+}
+
+.task-meta {
+    display: flex;
+    gap: 16px;
+    margin-top: 8px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.task-actions {
+    display: flex;
+    gap: 8px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.task-content:hover .task-actions {
+    opacity: 1;
+}
+
+.task-btn {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+
+.task-btn:hover {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+}
+
+.task-btn.delete:hover {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fecaca;
+}
+
+/* Add Task Form */
+.add-task-form {
+    background: var(--sidebar-bg);
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+    border: 1px solid var(--border);
+}
+
+.add-task-form h4 {
+    margin-bottom: 16px;
+    font-size: 0.9375rem;
+}
+
+.form-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.form-row input,
+.form-row select,
+.form-row textarea {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-family: inherit;
+}
+
+.form-row input:focus,
+.form-row select:focus,
+.form-row textarea:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+}
+
+.form-row input[type="text"],
+.form-row select {
+    flex: 1;
+}
+
+.form-row textarea {
+    width: 100%;
+    min-height: 80px;
+    resize: vertical;
+}
+
+/* Progress bar */
+.progress-bar-container {
+    background: var(--border);
+    border-radius: 10px;
+    height: 8px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.progress-bar {
+    height: 100%;
+    background: var(--accent-green);
+    border-radius: 10px;
+    transition: width 0.3s ease;
+}
+
+/* Empty states */
+.progress-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+}
+
+.progress-empty-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
 /* ===== Syntax Highlighting (Prism.js) ===== */
 code[class*="language-"],
 pre[class*="language-"] {
