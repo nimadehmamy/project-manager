@@ -1,6 +1,6 @@
 """Configuration example for Project Manager.
 
-Copy this file to config.py and update with your actual values.
+Copy this file to config.py and update with your actual values,
 Or use environment variables (recommended for production).
 """
 
@@ -14,12 +14,12 @@ SECRET_KEY = 'your-random-secret-key-here'
 AUTH_USERNAME = 'admin'
 AUTH_PASSWORD = 'changeme'
 
-# Beast SSH configuration
-BEAST_HOST = '192.168.1.XXX'  # Your Beast server IP
-BEAST_USER = 'your-username'
-BEAST_PORT = 2222
-BEAST_KEY_PATH = '~/.ssh/your-key'
-BEAST_WORK_DIR = '__work'
+# Remote SSH server configuration
+REMOTE_HOST = '192.168.1.XXX'  # Remote server IP or SSH alias
+REMOTE_USER = 'your-username'
+REMOTE_PORT = 22
+REMOTE_KEY_PATH = '~/.ssh/id_rsa'
+REMOTE_WORK_DIR = 'projects'
 
 # Security: Root jail - only files under this path are accessible
-ROOT_JAIL = f'/home/{BEAST_USER}/{BEAST_WORK_DIR}'
+ROOT_JAIL = f'/home/{REMOTE_USER}/{REMOTE_WORK_DIR}'
