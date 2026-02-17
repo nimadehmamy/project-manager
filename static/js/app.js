@@ -50,7 +50,7 @@ function setupEventListeners() {
 let expandedDirs = new Set();
 
 /**
- * Load all projects (directories in __work/)
+ * Load all projects (directories in configured path)
  */
 async function loadProjects(path = '/') {
     const projectList = document.getElementById('projectList');

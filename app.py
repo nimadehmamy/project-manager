@@ -1,4 +1,4 @@
-"""Project Manager - Secure file browser for Beast server."""
+"""Project Manager - Secure file browser for remote server."""
 
 import os
 import stat
@@ -41,7 +41,7 @@ app.secret_key = SECRET_KEY
 
 
 def get_ssh_client():
-    """Create and return an SSH client connected to Beast."""
+    """Create and return an SSH client connected to remote server."""
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     client.connect(
@@ -332,7 +332,7 @@ def scan_directory(sftp, base_path, rel_path=""):
 @app.route('/api/projects')
 @require_auth
 def api_projects():
-    """List all projects (directories in __work/)."""
+    """List all projects (directories in configured path)."""
     path = request.args.get('path', '/')
     safe_path = sanitize_path(path)
     
@@ -463,11 +463,11 @@ if __name__ == '__main__':
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain('cert.pem', 'key.pem')
         print(f"Starting Project Manager on https://{HOST}:{PORT}")
-        print(f"Accessing Beast at {BEAST_HOST}:{BEAST_PORT}")
-        print(f"Root jail: {ROOT_JAIL}")
+        print(f"Remote server: {BEAST_HOST}:{BEAST_PORT}")
+        print(f"Projects path: {ROOT_JAIL}")
         app.run(host=HOST, port=PORT, debug=DEBUG, ssl_context=context)
     else:
-        print(f"Starting Project Manager on http://{HOST}:{PORT}")
-        print(f"Accessing Beast at {BEAST_HOST}:{BEAST_PORT}")
-        print(f"Root jail: {ROOT_JAIL}")
+        print(f"Starting Project Manager on https://{HOST}:{PORT}")
+        print(f"Remote server: {BEAST_HOST}:{BEAST_PORT}")
+        print(f"Projects path: {ROOT_JAIL}")
         app.run(host=HOST, port=PORT, debug=DEBUG)

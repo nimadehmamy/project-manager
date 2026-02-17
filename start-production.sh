@@ -38,8 +38,6 @@ echo "====================================="
 echo "  Project Manager (Production)"
 echo "====================================="
 echo "  URL: http://localhost:${PM_PORT}"
-echo "  Beast: nima@192.168.1.157:2222"
-echo "  Work Dir: __work/"
 echo "====================================="
 echo ""
 
