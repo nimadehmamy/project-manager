@@ -864,32 +864,6 @@ function calculateProgressStats(tasks) {
     };
 }
 
-/**
- * Render the add task form
- */
-function renderAddTaskForm() {
-    return `
-        <div class="add-task-form">
-            <h4>Add New Task</h4>
-            <div class="form-row">
-                <input type="text" id="newTaskName" placeholder="Task name..." style="flex: 2;">
-                <select id="newTaskStatus">
-                    <option value="not_started">Not Started</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="completed">Completed</option>
-                    <option value="blocked">Blocked</option>
-                </select>
-            </div>
-            <div class="form-row">
-                <textarea id="newTaskDescription" placeholder="Description (optional)..." style="flex: 1;"></textarea>
-            </div>
-            <div class="form-row" style="justify-content: flex-end;">
-                <button class="btn" onclick="hideAddTaskForm()">Cancel</button>
-                <button class="btn btn-primary" onclick="addTask()">Add Task</button>
-            </div>
-        </div>
-    `;
-}
 
 /**
  * Render the task list recursively
@@ -1019,14 +993,35 @@ function findTaskById(tasks, taskId) {
     return null;
 }
 
+// Track the parent task ID for subtask creation
+let currentParentTaskId = null;
+
 /**
- * Show add task form
+ * Show add task form (for top-level tasks)
  */
 function showAddTaskForm() {
-    const form = document.getElementById('addTaskForm');
-    if (form) {
-        form.style.display = 'block';
+    currentParentTaskId = null;
+    const formContainer = document.getElementById('addTaskForm');
+    if (formContainer) {
+        formContainer.innerHTML = renderAddTaskForm();
+        formContainer.style.display = 'block';
         document.getElementById('newTaskName').focus();
+    }
+}
+
+/**
+ * Show add subtask form
+ */
+function showAddSubtaskForm(parentTaskId) {
+    currentParentTaskId = parentTaskId;
+    const formContainer = document.getElementById('addTaskForm');
+    if (formContainer) {
+        formContainer.innerHTML = renderAddTaskForm(true);
+        formContainer.style.display = 'block';
+        document.getElementById('newTaskName').focus();
+        
+        // Auto-expand parent
+        progressExpandedTasks.add(parentTaskId);
     }
 }
 
@@ -1034,18 +1029,22 @@ function showAddTaskForm() {
  * Hide add task form
  */
 function hideAddTaskForm() {
+    currentParentTaskId = null;
     const form = document.getElementById('addTaskForm');
     if (form) {
         form.style.display = 'none';
         // Clear inputs
-        document.getElementById('newTaskName').value = '';
-        document.getElementById('newTaskDescription').value = '';
-        document.getElementById('newTaskStatus').value = 'not_started';
+        const nameInput = document.getElementById('newTaskName');
+        const descInput = document.getElementById('newTaskDescription');
+        const statusInput = document.getElementById('newTaskStatus');
+        if (nameInput) nameInput.value = '';
+        if (descInput) descInput.value = '';
+        if (statusInput) statusInput.value = 'not_started';
     }
 }
 
 /**
- * Add a new task
+ * Add a new task or subtask
  */
 async function addTask() {
     const name = document.getElementById('newTaskName').value.trim();
@@ -1068,7 +1067,22 @@ async function addTask() {
         subtasks: []
     };
     
-    currentProgressData.tasks.push(newTask);
+    if (currentParentTaskId) {
+        // Add as subtask to parent
+        const parentTask = findTaskById(currentProgressData.tasks, currentParentTaskId);
+        if (parentTask) {
+            if (!parentTask.subtasks) {
+                parentTask.subtasks = [];
+            }
+            parentTask.subtasks.push(newTask);
+        } else {
+            alert('Parent task not found');
+            return;
+        }
+    } else {
+        // Add as top-level task
+        currentProgressData.tasks.push(newTask);
+    }
     
     await saveProgress();
     hideAddTaskForm();
@@ -1076,7 +1090,7 @@ async function addTask() {
 }
 
 /**
- * Delete a task
+ * Delete a task (and all its subtasks)
  */
 async function deleteTask(taskId) {
     if (!confirm('Are you sure you want to delete this task?')) return;
@@ -1084,33 +1098,63 @@ async function deleteTask(taskId) {
     if (!currentProgressData) return;
     
     // Remove task from data
-    currentProgressData.tasks = removeTaskById(currentProgressData.tasks, taskId);
+    deleteTaskById(currentProgressData.tasks, taskId);
     
     await saveProgress();
     loadProgress(currentProject);
 }
 
 /**
- * Remove task by ID from task list
+ * Delete task by ID (modifies array in place)
  */
-function removeTaskById(tasks, taskId) {
+function deleteTaskById(tasks, taskId) {
     const indices = taskId.split('.').map(Number);
     
     if (indices.length === 1) {
         // Top-level task
         tasks.splice(indices[0], 1);
-        return tasks;
+        return;
     }
     
     // Navigate to parent
     let current = tasks;
     for (let i = 0; i < indices.length - 1; i++) {
+        if (!current[indices[i]]) return;
         current = current[indices[i]].subtasks;
     }
     
     // Remove from parent
-    current[indices[indices.length - 1]].subtasks.splice(indices[indices.length - 1], 1);
-    return tasks;
+    if (current) {
+        current.splice(indices[indices.length - 1], 1);
+    }
+}
+
+/**
+ * Update the add task form HTML to support subtask indication
+ */
+function renderAddTaskForm(isSubtask = false) {
+    const title = isSubtask ? 'Add Subtask' : 'Add New Task';
+    return `
+        <div class="add-task-form">
+            <h4>${title}</h4>
+            <div class="form-row">
+                <input type="text" id="newTaskName" placeholder="Task name..." style="flex: 2;">
+                <select id="newTaskStatus">
+                    <option value="not_started">Not Started</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="completed">Completed</option>
+                    <option value="blocked">Blocked</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <textarea id="newTaskDescription" placeholder="Description (optional)..." style="flex: 1;"></textarea>
+            </div>
+            <div class="form-row" style="justify-content: flex-end;">
+                <button class="btn" onclick="hideAddTaskForm()">Cancel</button>
+                <button class="btn btn-primary" onclick="addTask()">Add</button>
+            </div>
+        </div>
+    `;
 }
 
 /**
@@ -1139,11 +1183,3 @@ async function saveProgress() {
     }
 }
 
-/**
- * Show add subtask form (simplified - just adds to top for now)
- */
-function showAddSubtaskForm(parentTaskId) {
-    // For now, just show the add task form
-    // Subtask functionality can be added later
-    showAddTaskForm();
-}
