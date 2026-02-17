@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Manager</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Prism.js for syntax highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markdown.min.js"></script>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <h1>📁 Project Manager</h1>
+            <span class="server-badge">Beast</span>
+        </div>
+        <div class="header-right">
+            <button id="refreshBtn" class="btn btn-icon" title="Refresh">🔄</button>
+            <a href="/logout" class="btn btn-secondary">Logout</a>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Layout -->
+    <div class="dashboard">
+        <!-- Left Panel: Project Browser -->
+        <aside class="sidebar-left">
+            <div class="panel-header">
+                <h3>Projects</h3>
+                <span id="projectCount" class="badge">0</span>
+            </div>
+            <div id="projectList" class="project-list">
+                <div class="loading">Loading projects...</div>
+            </div>
+        </aside>
+
+        <!-- Center Panel: Main Content -->
+        <main class="main-content">
+            <!-- Tab Bar -->
+            <div class="tab-bar">
+                <button class="tab-btn active" data-tab="summary">Summary</button>
+                <button class="tab-btn" data-tab="todos">Todos</button>
+                <button class="tab-btn" data-tab="files">Files</button>
+            </div>
+
+            <!-- Tab Content: Summary (README) -->
+            <div id="tab-summary" class="tab-content active">
+                <div id="readmeContent" class="markdown-content">
+                    <div class="empty-state">
+                        <p>Select a project to view its README</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Todos -->
+            <div id="tab-todos" class="tab-content">
+                <div id="todoContent" class="markdown-content">
+                    <div class="empty-state">
+                        <p>Select a project to view its TODOs</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Files -->
+            <div id="tab-files" class="tab-content">
+                <div class="file-browser">
+                    <div class="breadcrumb-container">
+                        <nav id="breadcrumb" class="breadcrumb"></nav>
+                    </div>
+                    <div id="fileList" class="file-list">
+                        <div class="empty-state">Select a project to browse files</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Panel: Chat (Placeholder) -->
+        <aside class="sidebar-right">
+            <div class="panel-header">
+                <h3>AI Assistant</h3>
+                <span class="status-indicator offline">Offline</span>
+            </div>
+            <div class="chat-placeholder">
+                <div class="placeholder-icon">🤖</div>
+                <p>AI Chat coming soon</p>
+                <p class="placeholder-hint">Ask questions about your projects</p>
+            </div>
+        </aside>
+    </div>
+
+    <!-- File Preview Modal -->
+    <div id="previewModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="previewTitle">File Preview</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <pre id="previewContent"></pre>
+            </div>
+            <div class="modal-footer">
+                <a id="downloadBtn" class="btn btn-primary" href="#" download>Download</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
