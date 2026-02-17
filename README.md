@@ -1,40 +1,48 @@
 # Project Manager
 
-A simple, secure web interface to browse files on your Beast server through this machine.
+A secure web interface to browse projects on a remote server via SSH/SFTP.
 
 ## Overview
 
-- **Browse projects hierarchically** - Expandable tree view of all directories in `__work/`
+- **Browse projects hierarchically** - Expandable tree view of all directories
 - **View README/TODO** - Automatic markdown rendering of project documentation
-- **Access Beast files** via SSH/SFTP through a web interface
-- **Security**: Path traversal protection ensures only `__work/` directory is accessible
+- **Access remote files** via SSH/SFTP through a web interface
+- **Security**: Path traversal protection ensures only configured directory is accessible
 - **Authentication**: Simple login system with session management
-- **File preview**: View text files directly in the browser
+- **File preview**: View text files with syntax highlighting
 - **Download**: Download any file from the workspace
+- **Remote access**: Works with Tailscale for secure access from anywhere
 
 ## Quick Start
 
-### 1. Configure
-
-Copy the example config and update with your values:
+### 1. Install Dependencies
 
 ```bash
 cd project_manager
-cp config.example.py config.py
-# Edit config.py with your Beast server details
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-Or use environment variables (recommended):
+### 2. Configure
+
+Run the setup script to configure your server and credentials:
 
 ```bash
-export BEAST_HOST="192.168.1.XXX"  # Your Beast IP
-export BEAST_USER="your-username"
-export BEAST_PORT="2222"
-export BEAST_KEY_PATH="~/.ssh/your-key"
-export PM_PASSWORD="your-secure-password"
+python3 setup.py
 ```
 
-### 2. Run
+This will ask for:
+- Remote server (IP, hostname, or SSH alias from `~/.ssh/config`)
+- Username and SSH key path
+- Remote projects directory (absolute path)
+- Web interface username and password
+
+Configuration is stored in:
+- `settings.json` - General settings (servers, paths)
+- `.credentials.py` - Sensitive data (passwords, keys) - **This file is gitignored**
+
+### 3. Run
 
 ```bash
 ./start.sh
@@ -42,81 +50,121 @@ export PM_PASSWORD="your-secure-password"
 
 Then access: `http://localhost:8000`
 
-Default credentials (if not set via env):
-- Username: `admin`
-- Password: `changeme`
+## Manual Configuration
 
-## Remote Access (Tailscale)
+You can also set configuration via environment variables:
 
-The server can be accessed via Tailscale (configured separately).
-
-To get your Tailscale IP, run `tailscale status` on the server.
-
-**On your laptop:**
 ```bash
-# Install Tailscale
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo systemctl enable --now tailscaled
-sudo tailscale up
+# Remote server connection
+export BEAST_HOST="192.168.1.100"      # Remote server IP or hostname
+export BEAST_USER="username"           # SSH username
+export BEAST_PORT="22"                 # SSH port
+export BEAST_KEY_PATH="~/.ssh/id_rsa"  # SSH private key
 
-# Then access:
-http://100.104.51.20:8000
+# Web application
+export PM_HOST="0.0.0.0"               # Web server bind address
+export PM_PORT="8000"                  # Web server port
+export PM_USERNAME="admin"             # Login username
+export PM_PASSWORD="your-password"     # Login password
+export PM_SECRET_KEY="random-secret"   # Session encryption key
 ```
+
+## Remote Access with Tailscale
+
+For secure remote access without port forwarding:
+
+1. Install Tailscale on your server and laptop:
+   ```bash
+   curl -fsSL https://tailscale.com/install.sh | sh
+   sudo tailscale up
+   ```
+
+2. Access via Tailscale IP:
+   ```
+   http://<server-tailscale-ip>:8000
+   ```
 
 Benefits:
 - No SSH port forwarding needed
-- Works from anywhere (even behind restrictive firewalls)
-- Encrypted mesh network (even with HTTP URL!)
+- Encrypted mesh network
+- Works from anywhere
 - No router configuration required
 
-**Note on HTTPS:** With Tailscale, your traffic is encrypted by the WireGuard tunnel, so HTTP is actually secure. However, if you want the browser to show a lock icon:
+## File Viewer Features
+
+The file viewer popup supports:
+- **Markdown files** - Rendered as formatted HTML
+- **Code files** - Syntax highlighting for Python, JavaScript, CSS, JSON, YAML, Bash, and more
+- **Plain text** - Clean formatting for other files
+
+## HTTPS Support
+
+For HTTPS with self-signed certificates:
 
 ```bash
-# Start with self-signed HTTPS certificate
 ./start-https.sh
-# Access: https://100.104.51.20:8443
-# (browser will warn about self-signed cert - click Advanced → Proceed)
-
-## Configuration
-
-Set environment variables to customize:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PM_HOST` | `0.0.0.0` | Server bind address |
-| `PM_PORT` | `8000` | Server port |
-| `PM_USERNAME` | `admin` | Login username |
-| `PM_PASSWORD` | `changeme` | Login password |
-| `PM_SECRET_KEY` | (random) | Flask session key |
-| `PM_DEBUG` | `false` | Debug mode |
-
-Example:
-```bash
-export PM_PASSWORD="my_secure_password"
-export PM_PORT=8080
-./start.sh
+# Access: https://localhost:8443
 ```
 
-## SSH Access
+## Project Structure
 
-The app uses the SSH config from `~/.ssh/config` to connect to Beast:
-- Host: `192.168.1.157`
-- Port: `2222`
-- User: `nima`
-- Key: `~/.ssh/id_rsa_blk`
+```
+project_manager/
+├── app.py                 # Main Flask application
+├── config.py              # Configuration loader
+├── setup.py               # Interactive setup script
+├── settings.json          # Your server settings (created by setup)
+├── .credentials.py        # Your credentials (gitignored, created by setup)
+├── requirements.txt       # Python dependencies
+├── start.sh               # Development server
+├── start-https.sh         # HTTPS server
+├── start-production.sh    # Production server (gunicorn)
+├── templates/
+│   ├── login.html         # Login page
+│   └── index.html         # Dashboard
+├── static/
+│   ├── css/style.css      # Styles
+│   └── js/app.js          # Frontend
+├── README.md              # This file
+├── TODO.md                # Feature roadmap
+└── AGENTS.md              # Context for AI assistants
+```
 
 ## Security Features
 
-1. **Path Jail**: All file access is restricted to `/home/nima/__work/` on Beast
+1. **Path Jail**: All file access is restricted to the configured directory
 2. **Path Sanitization**: `..` and other traversal attempts are blocked
 3. **Authentication**: Session-based login required for all endpoints
 4. **SSH Key Auth**: Uses your existing SSH key (no passwords stored)
 
-## Future Improvements
+## Development
 
-- Add file upload capability
-- Add file/directory creation
-- Add search functionality
-- Add multiple user support
-- Add HTTPS support
-- Add project bookmarks/notes
+### Adding Features
+
+See `TODO.md` for planned features and `AGENTS.md` for technical context.
+
+### Testing Changes
+
+```bash
+# Run development server with auto-reload
+export PM_DEBUG=true
+./start.sh
+```
+
+## Troubleshooting
+
+**SSH connection fails:**
+- Verify the server is reachable: `ssh <alias>`
+- Check SSH key permissions: `chmod 600 ~/.ssh/id_rsa`
+- Ensure the key is added to ssh-agent: `ssh-add ~/.ssh/id_rsa`
+
+**Cannot see projects:**
+- Verify the remote path exists and is readable
+- Check that the SSH user has permissions on that directory
+
+**Port already in use:**
+- Change the port: `export PM_PORT=8080` before running
+
+## License
+
+MIT License - See LICENSE file for details

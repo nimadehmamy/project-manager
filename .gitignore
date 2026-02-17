@@ -16,7 +16,9 @@ ENV/
 logs/
 *.log
 
-# Environment variables
+# Configuration with sensitive data
+settings.json
+.credentials.py
 .env
 .env.local
 
@@ -31,6 +33,6 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Project specific - NEVER commit these
+# Working directories (user's projects)
 __work/
-config.local.py
+projects/
