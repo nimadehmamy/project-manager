@@ -23,7 +23,11 @@
 
 - [ ] **Project bookmarks** - Pin/star frequently accessed projects
 - [ ] **Project notes** - Add markdown notes to each project directory
-- [x] **Project status tracking** - Progress tab with interactive task tracker (.project_manager/tasks.yml)
+- [x] **Project status tracking** - Progress tab with interactive task tracker
+  - [x] Local UI updates (no full re-render)
+  - [x] Edit task inline (name, status, description)
+  - [x] Background save to server
+  - [x] Hierarchical subtasks (.project_manager/tasks.yml)
 - [ ] **Recent files** - Show recently accessed files
 - [ ] **Git integration** - Show git status for projects with repositories
 
