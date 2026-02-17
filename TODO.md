@@ -2,20 +2,21 @@
 
 ## Infrastructure & Access
 
-- [x] **Add HTTPS/TLS support** ✅ - Self-signed certificates available via `./start-https.sh`
-- [x] **Set up Tailscale** ✅ - Connected at `100.104.51.20`. Install on laptop with same account.
+- [x] **Add HTTPS/TLS support** - Self-signed certificates available via `./start-https.sh`
+- [x] **Set up Tailscale** - Zero-config VPN for secure remote access
+- [x] **Configuration system** - setup.py creates settings.json and .credentials.py
 - [ ] **Set up nginx reverse proxy** - With basic auth as alternative access method
 - [ ] **Create systemd service** - Auto-start on boot
 - [ ] **Add rate limiting** - Prevent brute force on login
 
 ## Core File Management Features
 
-- [ ] **File upload capability** - Drag-and-drop file uploads to Beast
+- [ ] **File upload capability** - Drag-and-drop file uploads to remote server
 - [ ] **File/directory creation** - Create new folders and empty files from UI
 - [ ] **File deletion** - Move to trash or permanent delete with confirmation
 - [ ] **File rename** - Inline renaming in the file list
 - [ ] **File editing** - Simple text editor for code/config files
-- [ ] **Search functionality** - Search across all project files on Beast
+- [ ] **Search functionality** - Search across all project files
 - [ ] **File type icons** - Better visual distinction for different file types
 
 ## Project Management Features
@@ -28,7 +29,7 @@
 
 ## Multi-Server Support
 
-- [ ] **Support multiple servers** - Configure multiple SSH hosts (Beast, others)
+- [ ] **Support multiple servers** - Configure multiple SSH hosts
 - [ ] **Server switcher** - UI to switch between different servers
 - [ ] **Unified view** - See projects across multiple servers
 
