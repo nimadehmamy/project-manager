@@ -1056,7 +1056,7 @@ body {
 
 .task-actions {
     display: flex;
-    gap: 8px;
+    gap: 4px;
     opacity: 0;
     transition: opacity 0.15s;
 }
@@ -1073,6 +1073,7 @@ body {
     border-radius: 4px;
     cursor: pointer;
     color: var(--text-secondary);
+    white-space: nowrap;
 }
 
 .task-btn:hover {
@@ -1084,6 +1085,28 @@ body {
     background: #fee2e2;
     color: #991b1b;
     border-color: #fecaca;
+}
+
+/* Task Edit Form */
+.task-content.editing {
+    background: #f0f9ff;
+    border-color: var(--accent-blue);
+}
+
+.task-content.editing input,
+.task-content.editing select,
+.task-content.editing textarea {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: inherit;
+}
+
+.task-content.editing input:focus,
+.task-content.editing select:focus,
+.task-content.editing textarea:focus {
+    outline: none;
+    border-color: var(--accent-blue);
 }
 
 /* Add Task Form */

@@ -906,6 +906,7 @@ function renderTaskList(tasks, projectPath, parentId = null) {
                         ${task.description ? `<div class="task-description">${escapeHtml(task.description)}</div>` : ''}
                     </div>
                     <div class="task-actions">
+                        <button class="task-btn" onclick="editTask('${taskId}')">✏️ Edit</button>
                         <button class="task-btn" onclick="showAddSubtaskForm('${taskId}')">+ Subtask</button>
                         <button class="task-btn delete" onclick="deleteTask('${taskId}')">🗑</button>
                     </div>
@@ -960,19 +961,161 @@ async function toggleTaskComplete(taskId, isComplete) {
 }
 
 /**
- * Update task status
+ * Update task status (local + background save)
  */
 async function updateTaskStatus(taskId, newStatus) {
     if (!currentProgressData || !currentProject) return;
     
     // Find and update the task
     const task = findTaskById(currentProgressData.tasks, taskId);
-    if (task) {
-        task.status = newStatus;
-        await saveProgress();
-        // Re-render to show changes
-        loadProgress(currentProject);
+    if (!task) return;
+    
+    // Update local data
+    task.status = newStatus;
+    
+    // Update UI immediately (no re-render)
+    updateTaskUI(taskId, task);
+    
+    // Update progress stats
+    updateProgressStats();
+    
+    // Save in background
+    saveProgress().catch(err => console.error('Failed to save:', err));
+}
+
+/**
+ * Update just the task UI element without full re-render
+ */
+function updateTaskUI(taskId, task) {
+    // Update status dropdown
+    const statusSelect = document.querySelector(`.task-item[data-task-id="${taskId}"] .task-status`);
+    if (statusSelect) {
+        statusSelect.value = task.status;
+        statusSelect.className = `task-status ${task.status}`;
     }
+    
+    // Update checkbox
+    const checkbox = document.querySelector(`.task-item[data-task-id="${taskId}"] .task-checkbox`);
+    if (checkbox) {
+        checkbox.checked = task.status === 'completed';
+    }
+    
+    // Update task name strikethrough
+    const nameEl = document.querySelector(`.task-item[data-task-id="${taskId}"] .task-name`);
+    if (nameEl) {
+        nameEl.classList.toggle('completed', task.status === 'completed');
+    }
+}
+
+/**
+ * Update progress stats and bar without full re-render
+ */
+function updateProgressStats() {
+    if (!currentProgressData) return;
+    
+    const stats = calculateProgressStats(currentProgressData.tasks);
+    
+    // Update stat cards
+    const statValues = document.querySelectorAll('.stat-value');
+    if (statValues.length >= 4) {
+        statValues[0].textContent = stats.total;
+        statValues[1].textContent = stats.completed;
+        statValues[2].textContent = stats.inProgress;
+        statValues[3].textContent = stats.percentage + '%';
+    }
+    
+    // Update progress bar
+    const progressBar = document.querySelector('.progress-bar');
+    if (progressBar) {
+        progressBar.style.width = stats.percentage + '%';
+    }
+}
+
+// Track which task is being edited
+let editingTaskId = null;
+
+/**
+ * Show edit form for a task
+ */
+function editTask(taskId) {
+    if (!currentProgressData) return;
+    
+    const task = findTaskById(currentProgressData.tasks, taskId);
+    if (!task) return;
+    
+    editingTaskId = taskId;
+    
+    // Replace task content with edit form
+    const taskContent = document.querySelector(`.task-item[data-task-id="${taskId}"] > .task-content`);
+    if (taskContent) {
+        taskContent.innerHTML = renderTaskEditForm(task);
+    }
+}
+
+/**
+ * Render task edit form
+ */
+function renderTaskEditForm(task) {
+    return `
+        <span class="task-toggle leaf"></span>
+        <input type="checkbox" class="task-checkbox" disabled>
+        <div class="task-main" style="flex: 1;">
+            <div class="form-row" style="margin-bottom: 8px;">
+                <input type="text" id="editTaskName" value="${escapeHtml(task.name)}" style="flex: 1; font-size: 0.9375rem;">
+                <select id="editTaskStatus" style="width: 140px;">
+                    <option value="not_started" ${task.status === 'not_started' ? 'selected' : ''}>Not Started</option>
+                    <option value="in_progress" ${task.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                    <option value="completed" ${task.status === 'completed' ? 'selected' : ''}>Completed</option>
+                    <option value="blocked" ${task.status === 'blocked' ? 'selected' : ''}>Blocked</option>
+                    <option value="cancelled" ${task.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+                </select>
+            </div>
+            <textarea id="editTaskDescription" placeholder="Description..." style="width: 100%; min-height: 60px; font-size: 0.875rem;">${escapeHtml(task.description || '')}</textarea>
+        </div>
+        <div class="task-actions" style="opacity: 1;">
+            <button class="task-btn" onclick="saveTaskEdit()">💾 Save</button>
+            <button class="task-btn" onclick="cancelTaskEdit()">❌ Cancel</button>
+        </div>
+    `;
+}
+
+/**
+ * Save edited task
+ */
+async function saveTaskEdit() {
+    if (!editingTaskId || !currentProgressData) return;
+    
+    const name = document.getElementById('editTaskName').value.trim();
+    const status = document.getElementById('editTaskStatus').value;
+    const description = document.getElementById('editTaskDescription').value.trim();
+    
+    if (!name) {
+        alert('Please enter a task name');
+        return;
+    }
+    
+    // Update local data
+    const task = findTaskById(currentProgressData.tasks, editingTaskId);
+    if (task) {
+        task.name = name;
+        task.status = status;
+        task.description = description;
+    }
+    
+    editingTaskId = null;
+    
+    // Full re-render needed for edit (structure may change)
+    await saveProgress();
+    loadProgress(currentProject);
+}
+
+/**
+ * Cancel task edit
+ */
+function cancelTaskEdit() {
+    editingTaskId = null;
+    // Re-render to restore original view
+    loadProgress(currentProject);
 }
 
 /**
@@ -1044,7 +1187,7 @@ function hideAddTaskForm() {
 }
 
 /**
- * Add a new task or subtask
+ * Add a new task or subtask (local + background save)
  */
 async function addTask() {
     const name = document.getElementById('newTaskName').value.trim();
@@ -1075,6 +1218,7 @@ async function addTask() {
                 parentTask.subtasks = [];
             }
             parentTask.subtasks.push(newTask);
+            progressExpandedTasks.add(currentParentTaskId);
         } else {
             alert('Parent task not found');
             return;
@@ -1084,13 +1228,21 @@ async function addTask() {
         currentProgressData.tasks.push(newTask);
     }
     
-    await saveProgress();
     hideAddTaskForm();
+    
+    // Update stats
+    updateProgressStats();
+    
+    // Re-render to show new task (needed for new element)
+    // But we could optimize this to just append the new HTML
     loadProgress(currentProject);
+    
+    // Save in background
+    saveProgress().catch(err => console.error('Failed to save:', err));
 }
 
 /**
- * Delete a task (and all its subtasks)
+ * Delete a task (and all its subtasks) - local + background save
  */
 async function deleteTask(taskId) {
     if (!confirm('Are you sure you want to delete this task?')) return;
@@ -1100,8 +1252,17 @@ async function deleteTask(taskId) {
     // Remove task from data
     deleteTaskById(currentProgressData.tasks, taskId);
     
-    await saveProgress();
-    loadProgress(currentProject);
+    // Update UI - remove the element
+    const taskEl = document.querySelector(`.task-item[data-task-id="${taskId}"]`);
+    if (taskEl) {
+        taskEl.remove();
+    }
+    
+    // Update stats
+    updateProgressStats();
+    
+    // Save in background
+    saveProgress().catch(err => console.error('Failed to save:', err));
 }
 
 /**
