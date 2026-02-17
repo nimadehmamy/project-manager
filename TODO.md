@@ -23,7 +23,7 @@
 
 - [ ] **Project bookmarks** - Pin/star frequently accessed projects
 - [ ] **Project notes** - Add markdown notes to each project directory
-- [ ] **Project status tracking** - Mark projects as active/paused/archived
+- [x] **Project status tracking** - Progress tab with interactive task tracker (.project_manager/tasks.yml)
 - [ ] **Recent files** - Show recently accessed files
 - [ ] **Git integration** - Show git status for projects with repositories
 
