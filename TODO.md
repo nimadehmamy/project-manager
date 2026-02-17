@@ -55,6 +55,7 @@
 
 ## Testing & Documentation
 
+- [x] **Sanitize repository** - Remove all personal info before publishing
 - [ ] **Unit tests** - Backend API tests
 - [ ] **Integration tests** - SSH connection, file operations
 - [ ] **Deployment guide** - Step-by-step for different setups
