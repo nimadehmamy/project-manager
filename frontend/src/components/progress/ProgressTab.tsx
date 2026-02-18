@@ -15,7 +15,7 @@ interface ProgressTabProps {
 export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
   const { data: progressData, isLoading, refetch } = useProgress(projectPath);
   const [isAdding, setIsAdding] = useState(false);
-  const [addingToId, setAddingToId] = useState<string | null>(null);
+  const [addingToPath, setAddingToPath] = useState<number[] | null>(null);
   const [saving, setSaving] = useState(false);
 
   const initialized = progressData?.dir_exists && progressData?.found;
@@ -32,7 +32,38 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
     }
   };
 
-  const handleAddTask = useCallback(async (name: string, status: Task['status'], description: string, parentId?: string) => {
+  // Update task at specific path
+  const handleUpdateTask = useCallback((path: number[], updates: Partial<Task>) => {
+    if (!projectPath || !progressData?.data) return;
+
+    const updatedData = { ...progressData.data };
+    const task = getTaskAtPath(updatedData.tasks, path);
+    
+    if (task) {
+      Object.assign(task, updates);
+      
+      setSaving(true);
+      api.saveProgress(projectPath, updatedData)
+        .then(() => refetch())
+        .finally(() => setSaving(false));
+    }
+  }, [projectPath, progressData, refetch]);
+
+  // Delete task at specific path
+  const handleDeleteTask = useCallback((path: number[]) => {
+    if (!projectPath || !progressData?.data) return;
+
+    const updatedData = { ...progressData.data };
+    deleteTaskAtPath(updatedData.tasks, path);
+
+    setSaving(true);
+    api.saveProgress(projectPath, updatedData)
+      .then(() => refetch())
+      .finally(() => setSaving(false));
+  }, [projectPath, progressData, refetch]);
+
+  // Add task
+  const handleAddTask = useCallback((name: string, status: Task['status'], description: string) => {
     if (!projectPath || !progressData?.data) return;
 
     const newTask: Task = {
@@ -46,72 +77,37 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
 
     const updatedData = { ...progressData.data };
 
-    if (parentId) {
+    if (addingToPath) {
       // Add as subtask
-      const parent = findTask(updatedData.tasks, parentId);
+      const parent = getTaskAtPath(updatedData.tasks, addingToPath);
       if (parent) {
-        parent.subtasks = [...(parent.subtasks || []), newTask];
+        if (!parent.subtasks) parent.subtasks = [];
+        parent.subtasks.push(newTask);
       }
     } else {
       // Add as top-level
-      updatedData.tasks = [...updatedData.tasks, newTask];
+      updatedData.tasks.push(newTask);
     }
 
     setSaving(true);
-    try {
-      await api.saveProgress(projectPath, updatedData);
-      refetch();
-    } finally {
-      setSaving(false);
-      setIsAdding(false);
-      setAddingToId(null);
-    }
-  }, [projectPath, progressData, refetch]);
-
-  const handleUpdateTask = useCallback(async (taskId: string, updates: Partial<Task>) => {
-    if (!projectPath || !progressData?.data) return;
-
-    const updatedData = { ...progressData.data };
-    const task = findTask(updatedData.tasks, taskId);
+    setIsAdding(false);
+    setAddingToPath(null);
     
-    if (task) {
-      Object.assign(task, updates);
-      setSaving(true);
-      try {
-        await api.saveProgress(projectPath, updatedData);
-        refetch();
-      } finally {
-        setSaving(false);
-      }
-    }
-  }, [projectPath, progressData, refetch]);
+    api.saveProgress(projectPath, updatedData)
+      .then(() => refetch())
+      .finally(() => setSaving(false));
+  }, [projectPath, progressData, addingToPath, refetch]);
 
-  const handleDeleteTask = useCallback(async (taskId: string) => {
-    if (!projectPath || !progressData?.data) return;
-
-    const updatedData = { ...progressData.data };
-    deleteTaskById(updatedData.tasks, taskId);
-
-    setSaving(true);
-    try {
-      await api.saveProgress(projectPath, updatedData);
-      refetch();
-    } finally {
-      setSaving(false);
-    }
-  }, [projectPath, progressData, refetch]);
-
-  const handleReorderTasks = useCallback(async (tasks: Task[]) => {
+  // Reorder top-level tasks
+  const handleReorder = useCallback((tasks: Task[]) => {
     if (!projectPath || !progressData?.data) return;
 
     const updatedData = { ...progressData.data, tasks };
+    
     setSaving(true);
-    try {
-      await api.saveProgress(projectPath, updatedData);
-      refetch();
-    } finally {
-      setSaving(false);
-    }
+    api.saveProgress(projectPath, updatedData)
+      .then(() => refetch())
+      .finally(() => setSaving(false));
   }, [projectPath, progressData, refetch]);
 
   if (isLoading) {
@@ -150,19 +146,22 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
       <ProgressHeader 
         title={data.project.name || projectName}
         saving={saving}
-        onAddTask={() => setIsAdding(true)}
+        onAddTask={() => {
+          setAddingToPath(null);
+          setIsAdding(true);
+        }}
       />
       
       <ProgressStats tasks={data.tasks} />
       
       {isAdding && (
         <AddTaskForm
-          onSubmit={(name, status, desc) => handleAddTask(name, status, desc, addingToId || undefined)}
+          onSubmit={handleAddTask}
           onCancel={() => {
             setIsAdding(false);
-            setAddingToId(null);
+            setAddingToPath(null);
           }}
-          isSubtask={!!addingToId}
+          isSubtask={!!addingToPath}
         />
       )}
       
@@ -170,40 +169,36 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
         tasks={data.tasks}
         onUpdate={handleUpdateTask}
         onDelete={handleDeleteTask}
-        onAddSubtask={(parentId) => {
-          setAddingToId(parentId);
+        onAddSubtask={(path) => {
+          setAddingToPath(path);
           setIsAdding(true);
         }}
-        onReorder={handleReorderTasks}
+        onReorder={handleReorder}
       />
     </div>
   );
 }
 
-// Helper functions
-function findTask(tasks: Task[], taskId: string): Task | null {
-  const indices = taskId.split('.').map(Number);
-  let current: Task | undefined = tasks[indices[0]];
+// Helper: Get task at path [0, 1, 2] means tasks[0].subtasks[1].subtasks[2]
+function getTaskAtPath(tasks: Task[], path: number[]): Task | null {
+  let current: Task | undefined = tasks[path[0]];
   
-  for (let i = 1; i < indices.length && current; i++) {
-    current = current.subtasks?.[indices[i]];
+  for (let i = 1; i < path.length && current; i++) {
+    current = current.subtasks?.[path[i]];
   }
   
   return current || null;
 }
 
-function deleteTaskById(tasks: Task[], taskId: string): void {
-  const indices = taskId.split('.').map(Number);
-  
-  if (indices.length === 1) {
-    tasks.splice(indices[0], 1);
+// Helper: Delete task at path
+function deleteTaskAtPath(tasks: Task[], path: number[]): void {
+  if (path.length === 1) {
+    tasks.splice(path[0], 1);
     return;
   }
   
-  let current = tasks;
-  for (let i = 0; i < indices.length - 1; i++) {
-    current = current[indices[i]].subtasks || [];
+  const parent = getTaskAtPath(tasks, path.slice(0, -1));
+  if (parent && parent.subtasks) {
+    parent.subtasks.splice(path[path.length - 1], 1);
   }
-  
-  current.splice(indices[indices.length - 1], 1);
 }

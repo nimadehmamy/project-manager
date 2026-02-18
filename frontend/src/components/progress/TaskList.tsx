@@ -19,105 +19,92 @@ import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, ChevronRight, ChevronDown, Edit2, Trash2, Plus } from 'lucide-react';
 import type { Task } from '../../types';
 
-interface SortableTaskItemProps {
-  task: Task;
-  taskId: string;
-  depth?: number;
-  onUpdate: (id: string, updates: Partial<Task>) => void;
-  onDelete: (id: string) => void;
-  onAddSubtask: (id: string) => void;
-  isEditing: boolean;
-  onStartEdit: (id: string) => void;
-  onCancelEdit: () => void;
+// Generate unique ID for each task including nested ones
+function generateTaskId(path: number[]): string {
+  return path.join('.');
 }
 
-function SortableTaskItem({
-  task,
-  taskId,
-  depth = 0,
-  onUpdate,
-  onDelete,
-  onAddSubtask,
-  isEditing,
-  onStartEdit,
-  onCancelEdit,
-}: SortableTaskItemProps) {
+interface TaskItemProps {
+  task: Task;
+  path: number[];
+  onUpdate: (path: number[], updates: Partial<Task>) => void;
+  onDelete: (path: number[]) => void;
+  onAddSubtask: (path: number[]) => void;
+}
+
+function TaskItem({ task, path, onUpdate, onDelete, onAddSubtask }: TaskItemProps) {
   const [expanded, setExpanded] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     name: task.name,
     status: task.status,
     description: task.description || '',
   });
 
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: taskId });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
+  const taskId = generateTaskId(path);
   const hasSubtasks = task.subtasks && task.subtasks.length > 0;
+  const depth = path.length - 1;
 
   const handleSave = () => {
-    onUpdate(taskId, {
+    onUpdate(path, {
       name: editForm.name,
       status: editForm.status as Task['status'],
       description: editForm.description,
     });
-    onCancelEdit();
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditForm({
+      name: task.name,
+      status: task.status,
+      description: task.description || '',
+    });
+    setIsEditing(false);
   };
 
   if (isEditing) {
     return (
-      <li ref={setNodeRef} style={style} className="task-item">
-        <div className="task-content editing" style={{ marginLeft: `${depth * 20}px` }}>
-          <div className="task-edit-form">
-            <input
-              type="text"
-              value={editForm.name}
-              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-              placeholder="Task name..."
-            />
-            <select
-              value={editForm.status}
-              onChange={(e) => setEditForm({ ...editForm, status: e.target.value as Task['status'] })}
-            >
-              <option value="not_started">Not Started</option>
-              <option value="in_progress">In Progress</option>
-              <option value="completed">Completed</option>
-              <option value="blocked">Blocked</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-            <textarea
-              value={editForm.description}
-              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-              placeholder="Description..."
-              rows={2}
-            />
-            <div className="task-edit-actions">
-              <button className="btn btn-sm" onClick={onCancelEdit}>Cancel</button>
-              <button className="btn btn-sm btn-primary" onClick={handleSave}>Save</button>
-            </div>
+      <div className="task-content editing" style={{ marginLeft: `${depth * 20}px` }}>
+        <div className="task-edit-form" style={{ flex: 1 }}>
+          <input
+            type="text"
+            value={editForm.name}
+            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+            placeholder="Task name..."
+            style={{ fontSize: '0.9375rem' }}
+          />
+          <select
+            value={editForm.status}
+            onChange={(e) => setEditForm({ ...editForm, status: e.target.value as Task['status'] })}
+          >
+            <option value="not_started">Not Started</option>
+            <option value="in_progress">In Progress</option>
+            <option value="completed">Completed</option>
+            <option value="blocked">Blocked</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <textarea
+            value={editForm.description}
+            onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+            placeholder="Description..."
+            rows={2}
+          />
+          <div className="task-edit-actions">
+            <button className="btn btn-sm" onClick={handleCancel}>Cancel</button>
+            <button className="btn btn-sm btn-primary" onClick={handleSave}>Save</button>
           </div>
         </div>
-      </li>
+      </div>
     );
   }
 
   return (
-    <li ref={setNodeRef} style={style} className="task-item">
+    <>
       <div className="task-content" style={{ marginLeft: `${depth * 20}px` }}>
-        <div className="task-drag-handle" {...attributes} {...listeners}>
+        <span className="task-toggle" style={{ visibility: 'hidden' }}>
           <GripVertical size={16} />
-        </div>
+        </span>
 
         {hasSubtasks ? (
           <button
@@ -134,7 +121,7 @@ function SortableTaskItem({
           type="checkbox"
           className="task-checkbox"
           checked={task.status === 'completed'}
-          onChange={(e) => onUpdate(taskId, { status: e.target.checked ? 'completed' : 'not_started' })}
+          onChange={(e) => onUpdate(path, { status: e.target.checked ? 'completed' : 'not_started' })}
         />
 
         <div className="task-main">
@@ -152,51 +139,86 @@ function SortableTaskItem({
         </div>
 
         <div className="task-actions">
-          <button className="task-btn" onClick={() => onStartEdit(taskId)} title="Edit">
+          <button className="task-btn" onClick={() => setIsEditing(true)} title="Edit">
             <Edit2 size={14} />
           </button>
-          <button className="task-btn" onClick={() => onAddSubtask(taskId)} title="Add Subtask">
+          <button className="task-btn" onClick={() => onAddSubtask(path)} title="Add Subtask">
             <Plus size={14} />
           </button>
-          <button className="task-btn delete" onClick={() => onDelete(taskId)} title="Delete">
+          <button className="task-btn delete" onClick={() => onDelete(path)} title="Delete">
             <Trash2 size={14} />
           </button>
         </div>
       </div>
 
       {expanded && hasSubtasks && (
-        <ul className="task-sublist">
+        <div className="task-sublist">
           {task.subtasks!.map((subtask, idx) => (
-            <SortableTaskItem
-              key={`${taskId}.${idx}`}
+            <TaskItem
+              key={`${taskId}-${idx}`}
               task={subtask}
-              taskId={`${taskId}.${idx}`}
-              depth={depth + 1}
+              path={[...path, idx]}
               onUpdate={onUpdate}
               onDelete={onDelete}
               onAddSubtask={onAddSubtask}
-              isEditing={false}
-              onStartEdit={onStartEdit}
-              onCancelEdit={onCancelEdit}
             />
           ))}
-        </ul>
+        </div>
       )}
+    </>
+  );
+}
+
+// Sortable wrapper for top-level tasks only
+interface SortableTaskItemProps {
+  task: Task;
+  index: number;
+  onUpdate: (path: number[], updates: Partial<Task>) => void;
+  onDelete: (path: number[]) => void;
+  onAddSubtask: (path: number[]) => void;
+}
+
+function SortableTaskItem({ task, index, onUpdate, onDelete, onAddSubtask }: SortableTaskItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: index.toString() });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <li ref={setNodeRef} style={style} className="task-item">
+      <div className="task-drag-handle" {...attributes} {...listeners}>
+        <GripVertical size={16} />
+      </div>
+      <TaskItem
+        task={task}
+        path={[index]}
+        onUpdate={onUpdate}
+        onDelete={onDelete}
+        onAddSubtask={onAddSubtask}
+      />
     </li>
   );
 }
 
 interface TaskListProps {
   tasks: Task[];
-  onUpdate: (id: string, updates: Partial<Task>) => void;
-  onDelete: (id: string) => void;
-  onAddSubtask: (id: string) => void;
+  onUpdate: (path: number[], updates: Partial<Task>) => void;
+  onDelete: (path: number[]) => void;
+  onAddSubtask: (path: number[]) => void;
   onReorder: (tasks: Task[]) => void;
 }
 
 export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder }: TaskListProps) {
-  const [editingId, setEditingId] = useState<string | null>(null);
-
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -208,8 +230,8 @@ export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder }:
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      const oldIndex = tasks.findIndex((_, i) => i.toString() === active.id);
-      const newIndex = tasks.findIndex((_, i) => i.toString() === over.id);
+      const oldIndex = parseInt(active.id as string);
+      const newIndex = parseInt(over.id as string);
       onReorder(arrayMove(tasks, oldIndex, newIndex));
     }
   };
@@ -237,13 +259,10 @@ export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder }:
             <SortableTaskItem
               key={index}
               task={task}
-              taskId={index.toString()}
+              index={index}
               onUpdate={onUpdate}
               onDelete={onDelete}
               onAddSubtask={onAddSubtask}
-              isEditing={editingId === index.toString()}
-              onStartEdit={setEditingId}
-              onCancelEdit={() => setEditingId(null)}
             />
           ))}
         </ul>
