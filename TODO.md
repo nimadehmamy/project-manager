@@ -39,23 +39,19 @@
 
 ## UI/UX Improvements
 
-- [x] **Project Dashboard Layout** - Three-panel layout (projects left, main center, chat right)
-  - [x] Left panel: Project browser (GitHub-style directory listing) with expandable subdirectories
-  - [x] Main panel: Tabbed interface (Summary, Todos, Files)
-  - [x] Summary tab: Render README.md
-  - [x] Todos tab: Render TODO.md  
-  - [x] Files tab: Current file browser with popup
-  - [x] Right panel: Chat window placeholder
-- [x] **File Viewer Popup** - Large modal (95% width, 90% height)
-  - [x] Render markdown files with marked.js
-  - [x] Syntax highlighting with Prism.js (tomorrow theme)
-  - [x] Supports Python, JS, CSS, JSON, YAML, Bash, and more
-- [x] **Login Page** - Fixed styling with gradient background
+- [x] **React Frontend** - Complete rewrite with React + TypeScript + Vite
+  - [x] Modern component-based architecture
+  - [x] TanStack Query for data fetching and caching
+  - [x] Project browser with expandable tree
+  - [x] All tabs migrated (Summary, Todos, Progress, Files)
+  - [x] Drag-and-drop task management (@dnd-kit)
 - [ ] **Dark mode** - Toggle between light and dark themes
 - [ ] **File previews** - Image preview, syntax-highlighted code view
 - [ ] **Bulk operations** - Select multiple files for download/delete
-- [ ] **Progress indicators** - Show upload/download progress
 - [ ] **Keyboard shortcuts** - Vim-style navigation, quick actions
+- [ ] **Graph Visualization** - React Flow for project dependency graphs
+- [ ] **Notebook Interface** - Jupyter-style notebook support
+- [ ] **LaTeX Support** - Math rendering with KaTeX
 
 ## Testing & Documentation
 
