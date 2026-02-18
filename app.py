@@ -16,6 +16,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_from_directory,
     session,
     stream_with_context,
 )
@@ -141,8 +142,25 @@ def logout():
 @app.route('/')
 @require_auth
 def index():
-    """Main page."""
-    return render_template('index.html')
+    """Main page - serve React app."""
+    return send_from_directory('static/react', 'index.html')
+
+
+@app.route('/static/<path:path>')
+def static_files(path):
+    """Serve static files including React build."""
+    return send_from_directory('static', path)
+
+
+# Catch-all route for React Router
+@app.route('/<path:path>')
+@require_auth
+def catch_all(path):
+    """Serve React app for all routes (React Router handles client-side routing)."""
+    # Check if it's a file request
+    if '.' in path:
+        return send_from_directory('static/react', path)
+    return send_from_directory('static/react', 'index.html')
 
 
 @app.route('/api/browse')
