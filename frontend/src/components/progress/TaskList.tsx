@@ -19,9 +19,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, ChevronRight, ChevronDown, Edit2, Trash2, Plus } from 'lucide-react';
 import type { Task } from '../../types';
 
-// Local state management - independent of YAML
 interface LocalTask extends Task {
-  _localId: string; // Stable ID for React keys
+  _localId: string;
 }
 
 interface TaskItemProps {
@@ -30,10 +29,9 @@ interface TaskItemProps {
   onDelete: (localId: string) => void;
   onAddSubtask: (localId: string) => void;
   depth?: number;
-  allTasks: LocalTask[]; // For finding parent
 }
 
-function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0, allTasks }: TaskItemProps) {
+function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0 }: TaskItemProps) {
   const [expanded, setExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -45,14 +43,13 @@ function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0, allTasks 
   const hasSubtasks = task.subtasks && task.subtasks.length > 0;
   const subtasks = (task.subtasks || []) as LocalTask[];
 
-  // Reset edit form when task data changes
   useEffect(() => {
     setEditForm({
       name: task.name,
       status: task.status,
       description: task.description || '',
     });
-  }, [task.name, task.status, task.description]);
+  }, [task]);
 
   const handleSave = () => {
     onUpdate(task._localId, {
@@ -70,6 +67,17 @@ function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0, allTasks 
       description: task.description || '',
     });
     setIsEditing(false);
+  };
+
+  const handleCheckboxToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    const newStatus = task.status === 'completed' ? 'not_started' : 'completed';
+    onUpdate(task._localId, { status: newStatus });
+  };
+
+  const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    e.stopPropagation();
+    onUpdate(task._localId, { status: e.target.value as Task['status'] });
   };
 
   if (isEditing) {
@@ -112,14 +120,6 @@ function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0, allTasks 
   return (
     <>
       <div className="task-content" style={{ marginLeft: `${depth * 24}px` }}>
-        {/* Drag handle - inside the box */}
-        {depth === 0 && (
-          <span className="task-drag-handle">
-            <GripVertical size={16} />
-          </span>
-        )}
-        {depth > 0 && <span className="task-drag-handle" style={{ visibility: 'hidden' }}><GripVertical size={16} /></span>}
-
         {/* Expand/collapse toggle */}
         {hasSubtasks ? (
           <button
@@ -132,12 +132,12 @@ function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0, allTasks 
           <span className="task-toggle leaf" />
         )}
 
-        {/* Checkbox */}
+        {/* Checkbox - properly toggles */}
         <input
           type="checkbox"
           className="task-checkbox"
           checked={task.status === 'completed'}
-          onChange={(e) => onUpdate(task._localId, { status: e.target.checked ? 'completed' : 'not_started' })}
+          onChange={handleCheckboxToggle}
         />
 
         {/* Task content */}
@@ -146,9 +146,19 @@ function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0, allTasks 
             <span className={`task-name ${task.status === 'completed' ? 'completed' : ''}`}>
               {task.name}
             </span>
-            <span className={`task-status-badge ${task.status}`}>
-              {formatStatus(task.status)}
-            </span>
+            {/* Status dropdown */}
+            <select 
+              className={`task-status-select ${task.status}`}
+              value={task.status}
+              onChange={handleStatusChange}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <option value="not_started">Not Started</option>
+              <option value="in_progress">In Progress</option>
+              <option value="completed">Completed</option>
+              <option value="blocked">Blocked</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
           </div>
           {task.description && (
             <div className="task-description">{task.description}</div>
@@ -180,7 +190,6 @@ function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0, allTasks 
               onDelete={onDelete}
               onAddSubtask={onAddSubtask}
               depth={depth + 1}
-              allTasks={allTasks}
             />
           ))}
         </div>
@@ -189,16 +198,15 @@ function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0, allTasks 
   );
 }
 
-// Sortable wrapper for top-level tasks only
+// Sortable wrapper for top-level tasks
 interface SortableTaskItemProps {
   task: LocalTask;
   onUpdate: (localId: string, updates: Partial<Task>) => void;
   onDelete: (localId: string) => void;
   onAddSubtask: (localId: string) => void;
-  allTasks: LocalTask[];
 }
 
-function SortableTaskItem({ task, onUpdate, onDelete, onAddSubtask, allTasks }: SortableTaskItemProps) {
+function SortableTaskItem({ task, onUpdate, onDelete, onAddSubtask }: SortableTaskItemProps) {
   const {
     attributes,
     listeners,
@@ -215,10 +223,10 @@ function SortableTaskItem({ task, onUpdate, onDelete, onAddSubtask, allTasks }: 
   };
 
   return (
-    <li ref={setNodeRef} style={style} className="task-item sortable">
-      {/* Drag handle is part of the sortable wrapper, not inside TaskItem */}
-      <div className="sortable-drag-handle" {...attributes} {...listeners}>
-        <GripVertical size={16} />
+    <li ref={setNodeRef} style={style} className="task-item">
+      {/* Drag handle - ONLY functional one, positioned inside */}
+      <div className="task-drag-handle-wrapper" {...attributes} {...listeners}>
+        <GripVertical size={18} />
       </div>
       <div className="task-item-content">
         <TaskItem
@@ -227,7 +235,6 @@ function SortableTaskItem({ task, onUpdate, onDelete, onAddSubtask, allTasks }: 
           onDelete={onDelete}
           onAddSubtask={onAddSubtask}
           depth={0}
-          allTasks={allTasks}
         />
       </div>
     </li>
@@ -240,14 +247,12 @@ interface TaskListProps {
   onDelete: (localId: string) => void;
   onAddSubtask: (localId: string) => void;
   onReorder: (tasks: Task[]) => void;
-  onTasksChange?: (tasks: LocalTask[]) => void; // For parent to track local state
+  onTasksChange?: (tasks: LocalTask[]) => void;
 }
 
 export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder, onTasksChange }: TaskListProps) {
-  // Convert to local tasks with stable IDs
   const [localTasks, setLocalTasks] = useState<LocalTask[]>([]);
   
-  // Initialize from props
   useEffect(() => {
     const addLocalIds = (taskList: Task[], parentId = ''): LocalTask[] => {
       return taskList.map((task, index) => {
@@ -267,9 +272,7 @@ export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder, o
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
+      activationConstraint: { distance: 8 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -285,11 +288,7 @@ export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder, o
       
       if (oldIndex !== -1 && newIndex !== -1) {
         const newTasks = arrayMove(localTasks, oldIndex, newIndex);
-        
-        // Update local state immediately (optimistic)
         setLocalTasks(newTasks);
-        
-        // Call parent with updated tasks (without _localId)
         const cleanTasks = newTasks.map(({ _localId, ...task }) => task);
         onReorder(cleanTasks);
       }
@@ -322,22 +321,10 @@ export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder, o
               onUpdate={onUpdate}
               onDelete={onDelete}
               onAddSubtask={onAddSubtask}
-              allTasks={localTasks}
             />
           ))}
         </ul>
       </SortableContext>
     </DndContext>
   );
-}
-
-function formatStatus(status: string): string {
-  const labels: Record<string, string> = {
-    not_started: 'Not Started',
-    in_progress: 'In Progress',
-    completed: 'Completed',
-    blocked: 'Blocked',
-    cancelled: 'Cancelled',
-  };
-  return labels[status] || status;
 }
