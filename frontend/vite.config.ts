@@ -5,7 +5,7 @@ import path from 'path';
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: '/static/',
+  base: '/static/react/',
   build: {
     outDir: '../static/react',
     emptyOutDir: true,
