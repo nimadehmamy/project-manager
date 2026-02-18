@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Download, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { api } from '../../api/client';
 import ReactMarkdown from 'react-markdown';
@@ -61,17 +61,13 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
-  const imageContainerRef = useRef<HTMLDivElement>(null);
   
   // PDF state
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(1);
   const [pdfError, setPdfError] = useState<string | null>(null);
-  
-  // Pinch zoom state
-  const [initialPinchDistance, setInitialPinchDistance] = useState<number | null>(null);
-  const [initialZoom, setInitialZoom] = useState(1);
 
+  // Reset state when path changes
   useEffect(() => {
     if (!path) {
       setZoom(1);
@@ -87,45 +83,44 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
     if (IMAGE_EXTS.includes(ext)) {
       setFileType('image');
       setLoading(false);
-      return;
     } else if (PDF_EXTS.includes(ext)) {
       setFileType('pdf');
       setLoading(false);
-      return;
     } else if (CSV_EXTS.includes(ext)) {
       setFileType('csv');
+      loadTextFile(path);
     } else if (ext === 'md' || ext === 'markdown') {
       setFileType('markdown');
+      loadTextFile(path);
     } else if (LANGUAGE_MAP[ext]) {
       setFileType('code');
       setLanguage(LANGUAGE_MAP[ext]);
+      loadTextFile(path);
     } else if (['txt', 'log', 'ini', 'conf', 'cfg'].includes(ext)) {
       setFileType('text');
+      loadTextFile(path);
     } else {
       setFileType('binary');
       setLoading(false);
-      return;
     }
-
-    const loadFile = async () => {
-      setLoading(true);
-      setError(null);
-      
-      try {
-        const data = await api.getFile(path, false);
-        setContent(data);
-      } catch (err) {
-        setError('Failed to load file');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadFile();
   }, [path]);
 
+  const loadTextFile = async (filePath: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await api.getFile(filePath, false);
+      setContent(data);
+    } catch (err) {
+      setError('Failed to load file');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Apply syntax highlighting
   useEffect(() => {
-    if (fileType === 'code' && codeRef.current && language) {
+    if (fileType === 'code' && codeRef.current && language && content) {
       codeRef.current.className = `language-${language}`;
       Prism.highlightElement(codeRef.current);
     }
@@ -140,7 +135,7 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
     window.open(`${fileUrl}&download=true`, '_blank');
   };
 
-  // Mouse handlers for pan
+  // Image handlers
   const handleMouseDown = (e: React.MouseEvent) => {
     if (zoom > 1) {
       setIsDragging(true);
@@ -160,7 +155,7 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
   const handleMouseUp = () => setIsDragging(false);
 
   // Touch handlers for pinch zoom
-  const getPinchDistance = (touches: React.TouchList) => {
+  const getDistance = (touches: React.TouchList) => {
     const dx = touches[0].clientX - touches[1].clientX;
     const dy = touches[0].clientY - touches[1].clientY;
     return Math.sqrt(dx * dx + dy * dy);
@@ -168,10 +163,9 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
-      e.preventDefault();
-      const distance = getPinchDistance(e.touches);
-      setInitialPinchDistance(distance);
-      setInitialZoom(zoom);
+      const dist = getDistance(e.touches);
+      (e.target as Element).setAttribute('data-pinch-start', dist.toString());
+      (e.target as Element).setAttribute('data-zoom-start', zoom.toString());
     } else if (e.touches.length === 1 && zoom > 1) {
       setIsDragging(true);
       dragStart.current = { 
@@ -181,34 +175,26 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
     }
   };
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length === 2 && initialPinchDistance !== null) {
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
       e.preventDefault();
-      const distance = getPinchDistance(e.touches);
-      const scale = distance / initialPinchDistance;
-      const newZoom = Math.min(Math.max(initialZoom * scale, 0.5), 5);
-      setZoom(newZoom);
+      const startDist = parseFloat((e.target as Element).getAttribute('data-pinch-start') || '0');
+      const startZoom = parseFloat((e.target as Element).getAttribute('data-zoom-start') || '1');
+      if (startDist > 0) {
+        const currentDist = getDistance(e.touches);
+        const scale = currentDist / startDist;
+        const newZoom = Math.min(Math.max(startZoom * scale, 0.5), 5);
+        setZoom(newZoom);
+      }
     } else if (e.touches.length === 1 && isDragging && zoom > 1) {
       setPosition({
         x: e.touches[0].clientX - dragStart.current.x,
         y: e.touches[0].clientY - dragStart.current.y,
       });
     }
-  }, [initialPinchDistance, initialZoom, zoom, isDragging]);
-
-  const handleTouchEnd = () => {
-    setInitialPinchDistance(null);
-    setIsDragging(false);
   };
 
-  // Wheel zoom
-  const handleWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      setZoom(z => Math.min(Math.max(z * delta, 0.5), 5));
-    }
-  };
+  const handleTouchEnd = () => setIsDragging(false);
 
   const handleZoomIn = () => setZoom(z => Math.min(z * 1.2, 5));
   const handleZoomOut = () => setZoom(z => Math.max(z / 1.2, 0.5));
@@ -247,7 +233,6 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
       case 'image':
         return (
           <div 
-            ref={imageContainerRef}
             className="image-viewer-container"
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
@@ -256,7 +241,6 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            onWheel={handleWheel}
             style={{ cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
           >
             <img 
@@ -307,7 +291,7 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
                     <button 
                       className="btn btn-sm" 
                       disabled={pageNumber <= 1}
-                      onClick={() => setPageNumber(p => Math.max(1, p - 1))}
+                      onClick={() => setPageNumber(p => p - 1)}
                     >
                       Previous
                     </button>
@@ -315,7 +299,7 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
                     <button 
                       className="btn btn-sm" 
                       disabled={pageNumber >= numPages}
-                      onClick={() => setPageNumber(p => Math.min(numPages, p + 1))}
+                      onClick={() => setPageNumber(p => p + 1)}
                     >
                       Next
                     </button>
@@ -392,14 +376,14 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
           <div className="modal-actions">
             {showImageControls && (
               <>
-                <button className="btn btn-icon" onClick={handleZoomOut} title="Zoom Out (or Ctrl+Scroll)">
+                <button className="btn btn-icon" onClick={handleZoomOut}>
                   <ZoomOut size={18} />
                 </button>
                 <span className="zoom-level">{Math.round(zoom * 100)}%</span>
-                <button className="btn btn-icon" onClick={handleZoomIn} title="Zoom In (or Ctrl+Scroll)">
+                <button className="btn btn-icon" onClick={handleZoomIn}>
                   <ZoomIn size={18} />
                 </button>
-                <button className="btn btn-icon" onClick={handleReset} title="Reset">
+                <button className="btn btn-icon" onClick={handleReset}>
                   <RotateCcw size={18} />
                 </button>
               </>
@@ -419,7 +403,7 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
         
         {showImageControls && (
           <div className="modal-footer">
-            <small className="hint">💡 Tip: Ctrl+Scroll to zoom, drag to pan. Touch: pinch to zoom.</small>
+            <small className="hint">💡 Pinch to zoom on touch devices</small>
           </div>
         )}
       </div>
