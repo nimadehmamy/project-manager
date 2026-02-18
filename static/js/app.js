@@ -944,8 +944,11 @@ function formatStatusLabel(status) {
  * Toggle task expansion - only toggle display, no re-render
  */
 function toggleTask(taskId) {
+    // Escape taskId for CSS selectors
+    const escapedTaskId = CSS.escape(taskId);
+    
     const subtasksEl = document.getElementById(`subtasks-${taskId}`);
-    const toggleBtn = document.querySelector(`.task-item[data-task-id="${taskId}"] .task-toggle`);
+    const toggleBtn = document.querySelector(`.task-item[data-task-id="${escapedTaskId}"] .task-toggle`);
     
     if (!subtasksEl) return;
     
@@ -1003,21 +1006,24 @@ async function updateTaskStatus(taskId, newStatus) {
  * Update just the task UI element without full re-render
  */
 function updateTaskUI(taskId, task) {
+    // Escape taskId for CSS selectors
+    const escapedTaskId = CSS.escape(taskId);
+    
     // Update status dropdown
-    const statusSelect = document.querySelector(`.task-item[data-task-id="${taskId}"] .task-status`);
+    const statusSelect = document.querySelector(`.task-item[data-task-id="${escapedTaskId}"] .task-status`);
     if (statusSelect) {
         statusSelect.value = task.status;
         statusSelect.className = `task-status ${task.status}`;
     }
     
     // Update checkbox
-    const checkbox = document.querySelector(`.task-item[data-task-id="${taskId}"] .task-checkbox`);
+    const checkbox = document.querySelector(`.task-item[data-task-id="${escapedTaskId}"] .task-checkbox`);
     if (checkbox) {
         checkbox.checked = task.status === 'completed';
     }
     
     // Update task name strikethrough
-    const nameEl = document.querySelector(`.task-item[data-task-id="${taskId}"] .task-name`);
+    const nameEl = document.querySelector(`.task-item[data-task-id="${escapedTaskId}"] .task-name`);
     if (nameEl) {
         nameEl.classList.toggle('completed', task.status === 'completed');
     }
@@ -1057,14 +1063,22 @@ function editTask(taskId) {
     if (!currentProgressData) return;
     
     const task = findTaskById(currentProgressData.tasks, taskId);
-    if (!task) return;
+    if (!task) {
+        console.error('Task not found:', taskId);
+        return;
+    }
     
     editingTaskId = taskId;
     
+    // Escape taskId for CSS selector (dots need escaping)
+    const escapedTaskId = CSS.escape(taskId);
+    
     // Replace task content with edit form
-    const taskContent = document.querySelector(`.task-item[data-task-id="${taskId}"] > .task-content`);
+    const taskContent = document.querySelector(`.task-item[data-task-id="${escapedTaskId}"] > .task-content`);
     if (taskContent) {
         taskContent.innerHTML = renderTaskEditForm(task);
+    } else {
+        console.error('Task element not found for ID:', taskId);
     }
 }
 
@@ -1089,8 +1103,8 @@ function renderTaskEditForm(task) {
             <textarea id="editTaskDescription" placeholder="Description..." style="width: 100%; min-height: 60px; font-size: 0.875rem;">${escapeHtml(task.description || '')}</textarea>
         </div>
         <div class="task-actions" style="opacity: 1;">
-            <button class="task-btn" onclick="saveTaskEdit()">💾 Save</button>
-            <button class="task-btn" onclick="cancelTaskEdit()">❌ Cancel</button>
+            <button class="task-btn" onclick="event.stopPropagation(); saveTaskEdit()">💾 Save</button>
+            <button class="task-btn" onclick="event.stopPropagation(); cancelTaskEdit()">❌ Cancel</button>
         </div>
     `;
 }
@@ -1101,9 +1115,18 @@ function renderTaskEditForm(task) {
 async function saveTaskEdit() {
     if (!editingTaskId || !currentProgressData) return;
     
-    const name = document.getElementById('editTaskName').value.trim();
-    const status = document.getElementById('editTaskStatus').value;
-    const description = document.getElementById('editTaskDescription').value.trim();
+    const nameInput = document.getElementById('editTaskName');
+    const statusInput = document.getElementById('editTaskStatus');
+    const descInput = document.getElementById('editTaskDescription');
+    
+    if (!nameInput || !statusInput) {
+        console.error('Edit form inputs not found');
+        return;
+    }
+    
+    const name = nameInput.value.trim();
+    const status = statusInput.value;
+    const description = descInput ? descInput.value.trim() : '';
     
     if (!name) {
         alert('Please enter a task name');
@@ -1131,7 +1154,9 @@ async function saveTaskEdit() {
 function cancelTaskEdit() {
     editingTaskId = null;
     // Re-render to restore original view
-    loadProgress(currentProject);
+    if (currentProject) {
+        loadProgress(currentProject);
+    }
 }
 
 /**
@@ -1269,7 +1294,8 @@ async function deleteTask(taskId) {
     deleteTaskById(currentProgressData.tasks, taskId);
     
     // Update UI - remove the element
-    const taskEl = document.querySelector(`.task-item[data-task-id="${taskId}"]`);
+    const escapedTaskId = CSS.escape(taskId);
+    const taskEl = document.querySelector(`.task-item[data-task-id="${escapedTaskId}"]`);
     if (taskEl) {
         taskEl.remove();
     }
