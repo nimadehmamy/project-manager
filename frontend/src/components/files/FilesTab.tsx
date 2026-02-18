@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Folder, File, ChevronRight, Download } from 'lucide-react';
 import { useFiles } from '../../hooks/useProjects';
-import { api } from '../../api/client';
 import type { FileEntry } from '../../types';
 
 interface FilesTabProps {

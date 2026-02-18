@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { ChevronRight, ChevronDown, Folder, FolderOpen } from 'lucide-react';
 import { useProjects } from '../../hooks/useProjects';
 import type { Project } from '../../types';
@@ -15,7 +15,7 @@ function ProjectTreeItem({ project, selectedProject, onSelect, depth = 0 }: Proj
   const isSelected = selectedProject === project.path;
   const hasChildren = project.has_children;
   
-  const { data: children, isLoading } = useProjects(expanded ? project.path : null);
+  const { data: children, isLoading } = useProjects(expanded ? project.path : undefined);
 
   const handleClick = () => {
     onSelect(project.path, project.name);

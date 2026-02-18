@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import type { Project, ProjectProgress, FileEntry } from '../types';
+import type { Project, FileEntry } from '../types';
 
 export const useProjects = (path: string = '/') => {
   return useQuery({

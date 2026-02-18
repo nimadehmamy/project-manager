@@ -5,7 +5,7 @@ import { ProgressHeader } from './ProgressHeader';
 import { ProgressStats } from './ProgressStats';
 import { TaskList } from './TaskList';
 import { AddTaskForm } from './AddTaskForm';
-import type { ProjectProgress, Task } from '../../types';
+import type { Task } from '../../types';
 
 interface ProgressTabProps {
   projectPath: string | null;
