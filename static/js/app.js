@@ -882,11 +882,14 @@ function renderTaskList(tasks, projectPath, parentId = null) {
             ? (isExpanded ? 'task-toggle expanded' : 'task-toggle collapsed')
             : 'task-toggle leaf';
         
+        // Escape taskId for use in HTML attributes
+        const safeTaskId = taskId.replace(/"/g, '&quot;').replace(/'/g, "&#39;");
+        
         const statusClass = task.status || 'not_started';
         const statusLabel = formatStatusLabel(task.status);
         
         let html = `
-            <li class="task-item" data-task-id="${taskId}">
+            <li class="task-item" data-task-id="${safeTaskId}">
                 <div class="task-content">
                     <span class="${toggleClass}" onclick="toggleTask('${taskId}')"></span>
                     <input type="checkbox" class="task-checkbox" 
@@ -906,13 +909,13 @@ function renderTaskList(tasks, projectPath, parentId = null) {
                         ${task.description ? `<div class="task-description">${escapeHtml(task.description)}</div>` : ''}
                     </div>
                     <div class="task-actions">
-                        <button class="task-btn" onclick="editTask('${taskId}')">✏️ Edit</button>
-                        <button class="task-btn" onclick="showAddSubtaskForm('${taskId}')">+ Subtask</button>
-                        <button class="task-btn delete" onclick="deleteTask('${taskId}')">🗑</button>
+                        <button class="task-btn" onclick="event.stopPropagation(); editTask('${safeTaskId}')">✏️ Edit</button>
+                        <button class="task-btn" onclick="event.stopPropagation(); showAddSubtaskForm('${safeTaskId}')">+ Subtask</button>
+                        <button class="task-btn delete" onclick="event.stopPropagation(); deleteTask('${safeTaskId}')">🗑</button>
                     </div>
                 </div>
                 ${hasSubtasks ? `
-                    <ul class="task-subtasks" id="subtasks-${taskId}" style="display: ${isExpanded ? 'block' : 'none'};">
+                    <ul class="task-subtasks" id="subtasks-${safeTaskId}" style="display: ${isExpanded ? 'block' : 'none'};">
                         ${renderTaskList(task.subtasks, projectPath, taskId)}
                     </ul>
                 ` : ''}
@@ -938,17 +941,30 @@ function formatStatusLabel(status) {
 }
 
 /**
- * Toggle task expansion
+ * Toggle task expansion - only toggle display, no re-render
  */
 function toggleTask(taskId) {
-    if (progressExpandedTasks.has(taskId)) {
+    const subtasksEl = document.getElementById(`subtasks-${taskId}`);
+    const toggleBtn = document.querySelector(`.task-item[data-task-id="${taskId}"] .task-toggle`);
+    
+    if (!subtasksEl) return;
+    
+    const isExpanded = subtasksEl.style.display !== 'none';
+    
+    if (isExpanded) {
+        subtasksEl.style.display = 'none';
         progressExpandedTasks.delete(taskId);
+        if (toggleBtn) {
+            toggleBtn.classList.remove('expanded');
+            toggleBtn.classList.add('collapsed');
+        }
     } else {
+        subtasksEl.style.display = 'block';
         progressExpandedTasks.add(taskId);
-    }
-    // Re-render
-    if (currentProject) {
-        loadProgress(currentProject);
+        if (toggleBtn) {
+            toggleBtn.classList.remove('collapsed');
+            toggleBtn.classList.add('expanded');
+        }
     }
 }
 
