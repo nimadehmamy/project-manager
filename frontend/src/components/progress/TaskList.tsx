@@ -21,6 +21,7 @@ import type { Task } from '../../types';
 
 interface LocalTask extends Task {
   _localId: string;
+  _synced: boolean; // Track if synced with server
 }
 
 interface TaskItemProps {
@@ -39,9 +40,14 @@ function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0 }: TaskIte
     status: task.status,
     description: task.description || '',
   });
+  
+  // Local state for checkbox to ensure immediate response
+  const [localStatus, setLocalStatus] = useState(task.status);
 
-  const hasSubtasks = task.subtasks && task.subtasks.length > 0;
-  const subtasks = (task.subtasks || []) as LocalTask[];
+  // Sync local status when task changes from parent
+  useEffect(() => {
+    setLocalStatus(task.status);
+  }, [task.status]);
 
   useEffect(() => {
     setEditForm({
@@ -71,14 +77,20 @@ function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0 }: TaskIte
 
   const handleCheckboxToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation();
-    const newStatus = task.status === 'completed' ? 'not_started' : 'completed';
-    onUpdate(task._localId, { status: newStatus });
+    const newStatus = localStatus === 'completed' ? 'not_started' : 'completed';
+    setLocalStatus(newStatus); // Immediate local update
+    onUpdate(task._localId, { status: newStatus }); // Trigger server update
   };
 
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     e.stopPropagation();
-    onUpdate(task._localId, { status: e.target.value as Task['status'] });
+    const newStatus = e.target.value as Task['status'];
+    setLocalStatus(newStatus);
+    onUpdate(task._localId, { status: newStatus });
   };
+
+  const hasSubtasks = task.subtasks && task.subtasks.length > 0;
+  const subtasks = (task.subtasks || []) as LocalTask[];
 
   if (isEditing) {
     return (
@@ -132,24 +144,24 @@ function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0 }: TaskIte
           <span className="task-toggle leaf" />
         )}
 
-        {/* Checkbox - properly toggles */}
+        {/* Checkbox - uses localStatus for immediate response */}
         <input
           type="checkbox"
           className="task-checkbox"
-          checked={task.status === 'completed'}
+          checked={localStatus === 'completed'}
           onChange={handleCheckboxToggle}
         />
 
         {/* Task content */}
         <div className="task-main">
           <div className="task-header">
-            <span className={`task-name ${task.status === 'completed' ? 'completed' : ''}`}>
+            <span className={`task-name ${localStatus === 'completed' ? 'completed' : ''}`}>
               {task.name}
             </span>
             {/* Status dropdown */}
             <select 
-              className={`task-status-select ${task.status}`}
-              value={task.status}
+              className={`task-status-select ${localStatus}`}
+              value={localStatus}
               onChange={handleStatusChange}
               onClick={(e) => e.stopPropagation()}
             >
@@ -224,7 +236,6 @@ function SortableTaskItem({ task, onUpdate, onDelete, onAddSubtask }: SortableTa
 
   return (
     <li ref={setNodeRef} style={style} className="task-item">
-      {/* Drag handle - ONLY functional one, positioned inside */}
       <div className="task-drag-handle-wrapper" {...attributes} {...listeners}>
         <GripVertical size={18} />
       </div>
@@ -250,33 +261,39 @@ interface TaskListProps {
   onTasksChange?: (tasks: LocalTask[]) => void;
 }
 
+// Generate unique local IDs that persist across renders
+let idCounter = 0;
+const generateLocalId = () => `task-${Date.now()}-${idCounter++}`;
+
 export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder, onTasksChange }: TaskListProps) {
   const [localTasks, setLocalTasks] = useState<LocalTask[]>([]);
+  const [initialized, setInitialized] = useState(false);
   
+  // Only initialize once, then manage locally
   useEffect(() => {
-    const addLocalIds = (taskList: Task[], parentId = ''): LocalTask[] => {
-      return taskList.map((task, index) => {
-        const localId = parentId ? `${parentId}-${index}` : `task-${index}`;
-        return {
+    if (!initialized && tasks.length > 0) {
+      const addLocalIds = (taskList: Task[]): LocalTask[] => {
+        return taskList.map((task) => ({
           ...task,
-          _localId: localId,
-          subtasks: task.subtasks ? addLocalIds(task.subtasks, localId) : [],
-        };
-      });
-    };
-    
-    const newLocalTasks = addLocalIds(tasks);
-    setLocalTasks(newLocalTasks);
-    onTasksChange?.(newLocalTasks);
-  }, [tasks, onTasksChange]);
+          _localId: generateLocalId(),
+          _synced: true,
+          subtasks: task.subtasks ? addLocalIds(task.subtasks) : [],
+        }));
+      };
+      
+      const newLocalTasks = addLocalIds(tasks);
+      setLocalTasks(newLocalTasks);
+      onTasksChange?.(newLocalTasks);
+      setInitialized(true);
+    } else if (tasks.length === 0) {
+      setLocalTasks([]);
+      setInitialized(false);
+    }
+  }, [tasks, initialized, onTasksChange]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -289,7 +306,7 @@ export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder, o
       if (oldIndex !== -1 && newIndex !== -1) {
         const newTasks = arrayMove(localTasks, oldIndex, newIndex);
         setLocalTasks(newTasks);
-        const cleanTasks = newTasks.map(({ _localId, ...task }) => task);
+        const cleanTasks = newTasks.map(({ _localId, _synced, ...task }) => task);
         onReorder(cleanTasks);
       }
     }
@@ -304,15 +321,8 @@ export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder, o
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={handleDragEnd}
-    >
-      <SortableContext
-        items={localTasks.map(t => t._localId)}
-        strategy={verticalListSortingStrategy}
-      >
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={localTasks.map(t => t._localId)} strategy={verticalListSortingStrategy}>
         <ul className="task-list">
           {localTasks.map((task) => (
             <SortableTaskItem

@@ -1031,15 +1031,40 @@ body {
 
 /* PDF Viewer */
 .pdf-viewer {
-  width: 100%;
-  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
   min-height: 70vh;
 }
 
-.pdf-viewer iframe {
-  width: 100%;
-  height: 100%;
-  border: none;
+.pdf-viewer .react-pdf__Document {
+  max-width: 100%;
+}
+
+.pdf-viewer .react-pdf__Page {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  margin-bottom: 20px;
+}
+
+.pdf-viewer .react-pdf__Page canvas {
+  max-width: 100%;
+  height: auto !important;
+}
+
+.pdf-error {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.pdf-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 12px 24px;
+  background: var(--sidebar-bg);
+  border-radius: 8px;
 }
 
 /* CSV Viewer */
@@ -1086,6 +1111,19 @@ body {
 /* File content scroll */
 .file-content {
   overflow: auto;
+}
+
+.modal-footer {
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.modal-footer .hint {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
 }
 
 /* Prism.js overrides for better styling */
