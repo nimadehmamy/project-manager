@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -19,20 +19,21 @@ import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, ChevronRight, ChevronDown, Edit2, Trash2, Plus } from 'lucide-react';
 import type { Task } from '../../types';
 
-// Generate unique ID for each task including nested ones
-function generateTaskId(path: number[]): string {
-  return path.join('.');
+// Local state management - independent of YAML
+interface LocalTask extends Task {
+  _localId: string; // Stable ID for React keys
 }
 
 interface TaskItemProps {
-  task: Task;
-  path: number[];
-  onUpdate: (path: number[], updates: Partial<Task>) => void;
-  onDelete: (path: number[]) => void;
-  onAddSubtask: (path: number[]) => void;
+  task: LocalTask;
+  onUpdate: (localId: string, updates: Partial<Task>) => void;
+  onDelete: (localId: string) => void;
+  onAddSubtask: (localId: string) => void;
+  depth?: number;
+  allTasks: LocalTask[]; // For finding parent
 }
 
-function TaskItem({ task, path, onUpdate, onDelete, onAddSubtask }: TaskItemProps) {
+function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0, allTasks }: TaskItemProps) {
   const [expanded, setExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -41,12 +42,20 @@ function TaskItem({ task, path, onUpdate, onDelete, onAddSubtask }: TaskItemProp
     description: task.description || '',
   });
 
-  const taskId = generateTaskId(path);
   const hasSubtasks = task.subtasks && task.subtasks.length > 0;
-  const depth = path.length - 1;
+  const subtasks = (task.subtasks || []) as LocalTask[];
+
+  // Reset edit form when task data changes
+  useEffect(() => {
+    setEditForm({
+      name: task.name,
+      status: task.status,
+      description: task.description || '',
+    });
+  }, [task.name, task.status, task.description]);
 
   const handleSave = () => {
-    onUpdate(path, {
+    onUpdate(task._localId, {
       name: editForm.name,
       status: editForm.status as Task['status'],
       description: editForm.description,
@@ -65,7 +74,7 @@ function TaskItem({ task, path, onUpdate, onDelete, onAddSubtask }: TaskItemProp
 
   if (isEditing) {
     return (
-      <div className="task-content editing" style={{ marginLeft: `${depth * 20}px` }}>
+      <div className="task-content editing" style={{ marginLeft: `${depth * 24}px` }}>
         <div className="task-edit-form" style={{ flex: 1 }}>
           <input
             type="text"
@@ -73,6 +82,7 @@ function TaskItem({ task, path, onUpdate, onDelete, onAddSubtask }: TaskItemProp
             onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
             placeholder="Task name..."
             style={{ fontSize: '0.9375rem' }}
+            autoFocus
           />
           <select
             value={editForm.status}
@@ -101,11 +111,16 @@ function TaskItem({ task, path, onUpdate, onDelete, onAddSubtask }: TaskItemProp
 
   return (
     <>
-      <div className="task-content" style={{ marginLeft: `${depth * 20}px` }}>
-        <span className="task-toggle" style={{ visibility: 'hidden' }}>
-          <GripVertical size={16} />
-        </span>
+      <div className="task-content" style={{ marginLeft: `${depth * 24}px` }}>
+        {/* Drag handle - inside the box */}
+        {depth === 0 && (
+          <span className="task-drag-handle">
+            <GripVertical size={16} />
+          </span>
+        )}
+        {depth > 0 && <span className="task-drag-handle" style={{ visibility: 'hidden' }}><GripVertical size={16} /></span>}
 
+        {/* Expand/collapse toggle */}
         {hasSubtasks ? (
           <button
             className="task-toggle"
@@ -117,13 +132,15 @@ function TaskItem({ task, path, onUpdate, onDelete, onAddSubtask }: TaskItemProp
           <span className="task-toggle leaf" />
         )}
 
+        {/* Checkbox */}
         <input
           type="checkbox"
           className="task-checkbox"
           checked={task.status === 'completed'}
-          onChange={(e) => onUpdate(path, { status: e.target.checked ? 'completed' : 'not_started' })}
+          onChange={(e) => onUpdate(task._localId, { status: e.target.checked ? 'completed' : 'not_started' })}
         />
 
+        {/* Task content */}
         <div className="task-main">
           <div className="task-header">
             <span className={`task-name ${task.status === 'completed' ? 'completed' : ''}`}>
@@ -138,29 +155,32 @@ function TaskItem({ task, path, onUpdate, onDelete, onAddSubtask }: TaskItemProp
           )}
         </div>
 
+        {/* Actions */}
         <div className="task-actions">
           <button className="task-btn" onClick={() => setIsEditing(true)} title="Edit">
             <Edit2 size={14} />
           </button>
-          <button className="task-btn" onClick={() => onAddSubtask(path)} title="Add Subtask">
+          <button className="task-btn" onClick={() => onAddSubtask(task._localId)} title="Add Subtask">
             <Plus size={14} />
           </button>
-          <button className="task-btn delete" onClick={() => onDelete(path)} title="Delete">
+          <button className="task-btn delete" onClick={() => onDelete(task._localId)} title="Delete">
             <Trash2 size={14} />
           </button>
         </div>
       </div>
 
+      {/* Subtasks */}
       {expanded && hasSubtasks && (
         <div className="task-sublist">
-          {task.subtasks!.map((subtask, idx) => (
+          {subtasks.map((subtask) => (
             <TaskItem
-              key={`${taskId}-${idx}`}
+              key={subtask._localId}
               task={subtask}
-              path={[...path, idx]}
               onUpdate={onUpdate}
               onDelete={onDelete}
               onAddSubtask={onAddSubtask}
+              depth={depth + 1}
+              allTasks={allTasks}
             />
           ))}
         </div>
@@ -171,14 +191,14 @@ function TaskItem({ task, path, onUpdate, onDelete, onAddSubtask }: TaskItemProp
 
 // Sortable wrapper for top-level tasks only
 interface SortableTaskItemProps {
-  task: Task;
-  index: number;
-  onUpdate: (path: number[], updates: Partial<Task>) => void;
-  onDelete: (path: number[]) => void;
-  onAddSubtask: (path: number[]) => void;
+  task: LocalTask;
+  onUpdate: (localId: string, updates: Partial<Task>) => void;
+  onDelete: (localId: string) => void;
+  onAddSubtask: (localId: string) => void;
+  allTasks: LocalTask[];
 }
 
-function SortableTaskItem({ task, index, onUpdate, onDelete, onAddSubtask }: SortableTaskItemProps) {
+function SortableTaskItem({ task, onUpdate, onDelete, onAddSubtask, allTasks }: SortableTaskItemProps) {
   const {
     attributes,
     listeners,
@@ -186,7 +206,7 @@ function SortableTaskItem({ task, index, onUpdate, onDelete, onAddSubtask }: Sor
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: index.toString() });
+  } = useSortable({ id: task._localId });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -195,32 +215,62 @@ function SortableTaskItem({ task, index, onUpdate, onDelete, onAddSubtask }: Sor
   };
 
   return (
-    <li ref={setNodeRef} style={style} className="task-item">
-      <div className="task-drag-handle" {...attributes} {...listeners}>
+    <li ref={setNodeRef} style={style} className="task-item sortable">
+      {/* Drag handle is part of the sortable wrapper, not inside TaskItem */}
+      <div className="sortable-drag-handle" {...attributes} {...listeners}>
         <GripVertical size={16} />
       </div>
-      <TaskItem
-        task={task}
-        path={[index]}
-        onUpdate={onUpdate}
-        onDelete={onDelete}
-        onAddSubtask={onAddSubtask}
-      />
+      <div className="task-item-content">
+        <TaskItem
+          task={task}
+          onUpdate={onUpdate}
+          onDelete={onDelete}
+          onAddSubtask={onAddSubtask}
+          depth={0}
+          allTasks={allTasks}
+        />
+      </div>
     </li>
   );
 }
 
 interface TaskListProps {
   tasks: Task[];
-  onUpdate: (path: number[], updates: Partial<Task>) => void;
-  onDelete: (path: number[]) => void;
-  onAddSubtask: (path: number[]) => void;
+  onUpdate: (localId: string, updates: Partial<Task>) => void;
+  onDelete: (localId: string) => void;
+  onAddSubtask: (localId: string) => void;
   onReorder: (tasks: Task[]) => void;
+  onTasksChange?: (tasks: LocalTask[]) => void; // For parent to track local state
 }
 
-export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder }: TaskListProps) {
+export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder, onTasksChange }: TaskListProps) {
+  // Convert to local tasks with stable IDs
+  const [localTasks, setLocalTasks] = useState<LocalTask[]>([]);
+  
+  // Initialize from props
+  useEffect(() => {
+    const addLocalIds = (taskList: Task[], parentId = ''): LocalTask[] => {
+      return taskList.map((task, index) => {
+        const localId = parentId ? `${parentId}-${index}` : `task-${index}`;
+        return {
+          ...task,
+          _localId: localId,
+          subtasks: task.subtasks ? addLocalIds(task.subtasks, localId) : [],
+        };
+      });
+    };
+    
+    const newLocalTasks = addLocalIds(tasks);
+    setLocalTasks(newLocalTasks);
+    onTasksChange?.(newLocalTasks);
+  }, [tasks, onTasksChange]);
+
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -230,13 +280,23 @@ export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder }:
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      const oldIndex = parseInt(active.id as string);
-      const newIndex = parseInt(over.id as string);
-      onReorder(arrayMove(tasks, oldIndex, newIndex));
+      const oldIndex = localTasks.findIndex(t => t._localId === active.id);
+      const newIndex = localTasks.findIndex(t => t._localId === over.id);
+      
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const newTasks = arrayMove(localTasks, oldIndex, newIndex);
+        
+        // Update local state immediately (optimistic)
+        setLocalTasks(newTasks);
+        
+        // Call parent with updated tasks (without _localId)
+        const cleanTasks = newTasks.map(({ _localId, ...task }) => task);
+        onReorder(cleanTasks);
+      }
     }
   };
 
-  if (tasks.length === 0) {
+  if (localTasks.length === 0) {
     return (
       <div className="progress-empty">
         <p>No tasks yet. Click "Add Task" to get started!</p>
@@ -251,18 +311,18 @@ export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder }:
       onDragEnd={handleDragEnd}
     >
       <SortableContext
-        items={tasks.map((_, i) => i.toString())}
+        items={localTasks.map(t => t._localId)}
         strategy={verticalListSortingStrategy}
       >
         <ul className="task-list">
-          {tasks.map((task, index) => (
+          {localTasks.map((task) => (
             <SortableTaskItem
-              key={index}
+              key={task._localId}
               task={task}
-              index={index}
               onUpdate={onUpdate}
               onDelete={onDelete}
               onAddSubtask={onAddSubtask}
+              allTasks={localTasks}
             />
           ))}
         </ul>

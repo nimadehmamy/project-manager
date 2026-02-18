@@ -319,6 +319,35 @@ body {
   margin-bottom: 8px;
 }
 
+.task-item.sortable {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.sortable-drag-handle {
+  cursor: grab;
+  color: var(--text-muted);
+  padding: 12px 4px;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  margin-top: 1px;
+}
+
+.sortable-drag-handle:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.sortable-drag-handle:active {
+  cursor: grabbing;
+}
+
+.task-item-content {
+  flex: 1;
+}
+
 .task-content {
   display: flex;
   align-items: flex-start;
@@ -341,13 +370,13 @@ body {
 }
 
 .task-drag-handle {
-  cursor: grab;
+  cursor: default;
   color: var(--text-muted);
   padding: 2px;
-}
-
-.task-drag-handle:active {
-  cursor: grabbing;
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .task-toggle {
@@ -811,7 +840,13 @@ body {
 }
 
 .modal-content.file-viewer {
-  max-width: 1200px;
+  max-width: 1400px;
+}
+
+.modal-content.file-viewer.wide {
+  width: 98%;
+  max-width: 1600px;
+  height: 95vh;
 }
 
 .modal-header {
@@ -840,6 +875,21 @@ body {
   padding: 24px;
 }
 
+.code-container {
+  background: #1e1e1e;
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.code-container pre {
+  margin: 0;
+  padding: 20px;
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  background: transparent;
+}
+
 .code-view,
 .text-view {
   margin: 0;
@@ -858,6 +908,18 @@ body {
 .text-view {
   background: var(--sidebar-bg);
   color: var(--text-primary);
+}
+
+/* Prism.js overrides for better styling */
+pre[class*="language-"] {
+  background: #1e1e1e !important;
+  margin: 0;
+  border-radius: 0;
+}
+
+code[class*="language-"] {
+  text-shadow: none;
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
 }
 
 .btn-icon {
