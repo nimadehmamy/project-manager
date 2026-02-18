@@ -2,13 +2,40 @@
 
 ## Project Overview
 
-**Project Manager** is a lightweight web interface for browsing files on a remote server through a local web server. It's designed to run on a home server and provide secure access to project files.
+**Project Manager** is a lightweight web interface for browsing files on a remote server (called "Beast") through a local web server. It's designed to run on a home server and provide secure access to project files.
 
 ## Architecture
 
-- **Backend**: Python Flask application
-- **Frontend**: Vanilla JavaScript with modern CSS
-- **Remote Access**: SSH/SFTP via Paramiko to remote server
+### Key Distinction: Three-Machine Setup
+
+```
+┌─────────────────┐      HTTP/WebSocket     ┌─────────────────┐      SSH/Paramiko       ┌─────────────────┐
+│   Your Laptop   │  ═══════════════════►   │  Flask Server   │  ═══════════════════►   │     Beast       │
+│   (Browser)     │                         │  (Web + Term)   │                         │  (Projects)     │
+│                 │                         │                 │                         │                 │
+│  - Web Browser  │                         │  - Flask (8000) │                         │  - Projects     │
+│  - Via Tailscale│                         │  - Node (3001)  │                         │  - Zellij       │
+└─────────────────┘                         └─────────────────┘                         └─────────────────┘
+```
+
+**Important Network Topology Note:**
+The web server can run on a different machine than your browser:
+- **Your Laptop** - Where you run the web browser (can access via Tailscale/VPN)
+- **Flask Server** - Where the web application runs (ports 8000 and 3001)
+- **Beast** - Remote server with projects and Zellij (accessed via SSH)
+
+- **Flask Web Server**: Runs on a host machine (may be different from your laptop)
+- **Terminal Service**: Also runs on the same host as Flask (port 3001)
+- **Beast (Remote Server)**: Where projects and Zellij sessions live (accessed via SSH)
+- **Communication**: Browser → Flask (HTTP/WebSocket) → Beast (SSH)
+
+### Stack
+
+- **Backend**: Python Flask application (runs locally on port 8000)
+- **Terminal Service**: Node.js + node-pty (runs locally on port 3001)
+- **Frontend**: React + TypeScript + Vite (runs locally)  
+- **Remote Access**: SSH/SFTP via Paramiko to Beast server
+- **AI Agents**: Zellij sessions running ON BEAST, accessed via SSH
 - **Security**: Session-based auth, path jail to prevent directory traversal
 
 ### Dashboard Layout
@@ -41,9 +68,13 @@ Environment variables can override any setting:
 | `app.py` | Main Flask application with API endpoints |
 | `config.py` | Configuration loader (reads settings.json + .credentials.py) |
 | `setup.py` | Interactive setup script for first-time configuration |
+| `start-all.sh` | Starts both Flask and Terminal Service |
 | `templates/index.html` | Main dashboard UI |
 | `static/js/app.js` | Frontend JavaScript |
 | `static/css/style.css` | Styling |
+| `terminal-service/server.js` | Node.js terminal service with node-pty |
+| `terminal-service/config.js` | SSH configuration for Beast connection |
+| `frontend/src/components/terminal/TerminalPanel.tsx` | React terminal component |
 
 ## Environment
 
@@ -64,7 +95,10 @@ Environment variables can override any setting:
 # First time setup
 python3 setup.py
 
-# Development mode
+# Start all services (Flask + Terminal Service) - RECOMMENDED
+./start-all.sh
+
+# Development mode (Flask only)
 ./start.sh
 
 # Production mode (gunicorn)
@@ -74,6 +108,8 @@ python3 setup.py
 ./start-https.sh
 ```
 
+> **Note:** Always use `./start-all.sh` to start both the Flask web server (port 8000) and the Node.js terminal service (port 3001). Both services must be running for full functionality including terminals and Zellij integration.
+
 ## Coding Conventions
 
 - Follow PEP 8 for Python code
@@ -81,6 +117,105 @@ python3 setup.py
 - Keep authentication checks on all new endpoints
 - Log all security-relevant events
 - Sanitize personal info before committing
+
+## Terminal Service Architecture
+
+### Two-Service Design
+
+The system uses **two separate services** for better terminal emulation:
+
+```
+User Browser ──► Flask (port 8000) ──► SSH ──► Beast ──► Zellij Session
+         │
+         └── WebSocket ──► Node Terminal Service (port 3001)
+                                     └──► SSH ──► Beast ──► bash/zellij
+```
+
+1. **Flask (port 8000)**: Web UI, API endpoints, session management
+2. **Terminal Service (port 3001)**: Node.js + node-pty for real PTY terminals
+
+### Why Two Services?
+
+- **Python struggles with PTY**: Eventlet/asyncio don't handle real PTY well
+- **node-pty**: Native Node.js module provides proper PTY allocation
+- **SSH -t flag**: Critical for TTY allocation on remote Beast server
+- **Full Terminal**: ANSI escape codes, colors, interactive programs work correctly
+
+### Terminal Service (Node.js)
+
+**Location**: `terminal-service/`
+**Port**: 3001
+**Key Features**:
+- Spawns real PTY using `node-pty`
+- WebSocket communication via Socket.IO
+- SSH to Beast with automatic project path CD
+- Session management with cleanup
+
+**Commands**:
+```bash
+# Start terminal service
+cd terminal-service && node server.js
+
+# Or use PM2 for production
+cd terminal-service && pm2 start ecosystem.config.js
+```
+
+**Health Check**:
+```bash
+curl http://localhost:3001/health
+```
+
+### Flask Integration
+
+Flask provides API endpoints to list/create Zellij sessions:
+- `GET /api/zellij/status` - Service health check
+- `GET /api/zellij/sessions` - List Zellij sessions on Beast
+- `POST /api/zellij/sessions` - Create new Zellij session
+- `POST /api/zellij/sessions/<name>/kill` - Kill a session
+
+### Frontend Terminal Component
+
+**Location**: `frontend/src/components/terminal/TerminalPanel.tsx`
+
+Connects to Node service on port 3001 via Socket.IO:
+```typescript
+const socket = io('http://localhost:3001');
+socket.emit('start_session', { 
+  type: 'zellij',      // or 'new' for standalone terminal
+  projectPath: '/path/to/project',
+  sessionName: 'pm-project'
+});
+```
+
+### Session Naming Convention
+
+For automatic project binding, name your Zellij sessions on Beast:
+```bash
+# If project is at /home/nima/projects/my-project
+zellij --session pm-my-project
+```
+
+### Quick Start
+
+```bash
+# Start both services
+./start-all.sh
+
+# Or manually:
+# Terminal 1: Terminal Service
+cd terminal-service && node server.js
+
+# Terminal 2: Flask App
+source venv/bin/activate && python app.py
+```
+
+### Common Issues
+
+1. **Terminal shows no output**: Check if terminal service is running on port 3001
+2. **SSH key errors**: Verify `terminal-service/config.js` has correct key path
+3. **CORS errors**: Ensure terminal service allows connections from Flask origin
+4. **Mouse tracking in terminal**: Zellij enables mouse tracking by default. If hovering writes characters to the terminal, this is Zellij's mouse mode. To disable it in Zellij: press `Ctrl+G` → Options → uncheck "Enable Mouse Mode"
+5. **Powerline fonts not showing**: The terminal uses Nerd Fonts for special characters. These must be installed on the machine running the browser (your laptop), not the server. The browser loads these fonts to render the terminal.
 
 ## Notes for AI Assistants
 
@@ -90,3 +225,24 @@ python3 setup.py
 - This is a home server tool - prioritize simplicity over enterprise features
 - **No sudo access**: I cannot run commands with sudo. Ask the user to run sudo commands manually
 - Server is Ubuntu 24.04
+- **TWO MACHINE ARCHITECTURE**: Flask is local, projects and Zellij are on Beast
+
+## Git Workflow
+
+When making changes to the project, periodically commit and push to git:
+
+```bash
+# Check status
+git status
+
+# Add changes
+git add -A
+
+# Commit with descriptive message
+git commit -m "Description of changes"
+
+# Push to remote
+git push
+```
+
+**Note**: Always rebuild the frontend (`npm run build` in `frontend/`) before committing if you made changes to the React code. This updates the static files in `static/react/`.

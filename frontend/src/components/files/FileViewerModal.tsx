@@ -1,12 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Download, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { X, Download, ZoomIn, ZoomOut, RotateCcw, FileText } from 'lucide-react';
 import { api } from '../../api/client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Prism from 'prismjs';
-import { Document, Page, pdfjs } from 'react-pdf';
-import 'react-pdf/dist/Page/AnnotationLayer.css';
-import 'react-pdf/dist/Page/TextLayer.css';
 import 'prismjs/components/prism-python';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-typescript';
@@ -24,10 +21,8 @@ import 'prismjs/components/prism-go';
 import 'prismjs/components/prism-java';
 import 'prismjs/components/prism-c';
 import 'prismjs/components/prism-cpp';
+import 'prismjs/components/prism-latex';
 import 'prismjs/themes/prism-tomorrow.css';
-
-// Set worker for react-pdf
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 interface FileViewerModalProps {
   path: string | null;
@@ -42,17 +37,27 @@ const LANGUAGE_MAP: Record<string, string> = {
   'rs': 'rust', 'go': 'go', 'java': 'java', 'c': 'c', 'cpp': 'cpp',
   'h': 'c', 'hpp': 'cpp', 'cs': 'csharp', 'php': 'php', 'rb': 'ruby',
   'swift': 'swift', 'kt': 'kotlin', 'sql': 'sql', 'dockerfile': 'docker',
+  'tex': 'latex', 'sty': 'latex', 'cls': 'latex', 'bib': 'bibtex',
 };
 
+// Extensions that should be treated as binary (cannot be viewed as text)
+const BINARY_EXTS = [
+  'exe', 'dll', 'so', 'dylib', 'bin', 'dat',
+  'zip', 'tar', 'gz', 'bz2', '7z', 'rar',
+  'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico',
+  'mp3', 'mp4', 'avi', 'mov', 'wav', 'flac',
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+  'o', 'a', 'lib', 'class', 'jar', 'war', 'pyc', 'pyo',
+  'db', 'sqlite', 'sqlite3',
+];
+
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg'];
-const PDF_EXTS = ['pdf'];
-const CSV_EXTS = ['csv', 'tsv'];
 
 export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fileType, setFileType] = useState<'image' | 'pdf' | 'csv' | 'code' | 'text' | 'markdown' | 'binary'>('text');
+  const [fileType, setFileType] = useState<'image' | 'code' | 'text' | 'markdown' | 'binary'>('text');
   const [language, setLanguage] = useState<string>('');
   const codeRef = useRef<HTMLPreElement>(null);
   
@@ -61,58 +66,53 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
-  
-  // PDF state
-  const [numPages, setNumPages] = useState<number>(0);
-  const [pageNumber, setPageNumber] = useState<number>(1);
-  const [pdfError, setPdfError] = useState<string | null>(null);
 
   // Reset state when path changes
   useEffect(() => {
     if (!path) {
       setZoom(1);
       setPosition({ x: 0, y: 0 });
-      setPageNumber(1);
-      setNumPages(0);
-      setPdfError(null);
       return;
     }
 
     const ext = path.split('.').pop()?.toLowerCase() || '';
     
+    // Reset state
+    setContent('');
+    setError(null);
+    
     if (IMAGE_EXTS.includes(ext)) {
       setFileType('image');
       setLoading(false);
-    } else if (PDF_EXTS.includes(ext)) {
-      setFileType('pdf');
-      setLoading(false);
-    } else if (CSV_EXTS.includes(ext)) {
-      setFileType('csv');
-      loadTextFile(path);
-    } else if (ext === 'md' || ext === 'markdown') {
-      setFileType('markdown');
-      loadTextFile(path);
-    } else if (LANGUAGE_MAP[ext]) {
-      setFileType('code');
-      setLanguage(LANGUAGE_MAP[ext]);
-      loadTextFile(path);
-    } else if (['txt', 'log', 'ini', 'conf', 'cfg'].includes(ext)) {
-      setFileType('text');
-      loadTextFile(path);
-    } else {
+    } else if (BINARY_EXTS.includes(ext)) {
       setFileType('binary');
       setLoading(false);
+    } else {
+      // Try to load as text for all other files
+      loadTextFile(path, ext);
     }
   }, [path]);
 
-  const loadTextFile = async (filePath: string) => {
+  const loadTextFile = async (filePath: string, ext: string) => {
     setLoading(true);
     setError(null);
     try {
       const data = await api.getFile(filePath, false);
       setContent(data);
+      
+      // Determine file type from extension
+      if (ext === 'md' || ext === 'markdown') {
+        setFileType('markdown');
+      } else if (LANGUAGE_MAP[ext]) {
+        setFileType('code');
+        setLanguage(LANGUAGE_MAP[ext]);
+      } else {
+        setFileType('text');
+        setLanguage('');
+      }
     } catch (err) {
       setError('Failed to load file');
+      setFileType('binary');
     } finally {
       setLoading(false);
     }
@@ -120,8 +120,12 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
 
   // Apply syntax highlighting
   useEffect(() => {
-    if (fileType === 'code' && codeRef.current && language && content) {
-      codeRef.current.className = `language-${language}`;
+    if ((fileType === 'code' || fileType === 'text') && codeRef.current && content) {
+      if (language) {
+        codeRef.current.className = `language-${language}`;
+      } else {
+        codeRef.current.className = '';
+      }
       Prism.highlightElement(codeRef.current);
     }
   }, [content, fileType, language]);
@@ -203,28 +207,6 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
     setPosition({ x: 0, y: 0 });
   };
 
-  const parseCSV = (text: string) => {
-    const lines = text.trim().split('\n');
-    return lines.map(line => {
-      const result: string[] = [];
-      let current = '';
-      let inQuotes = false;
-      
-      for (const char of line) {
-        if (char === '"') {
-          inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-          result.push(current.trim());
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-      result.push(current.trim());
-      return result;
-    });
-  };
-
   const renderContent = () => {
     if (loading) return <div className="loading">Loading...</div>;
     if (error) return <div className="error">{error}</div>;
@@ -257,83 +239,6 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
           </div>
         );
 
-      case 'pdf':
-        return (
-          <div className="pdf-viewer">
-            {pdfError ? (
-              <div className="pdf-error">
-                <p>Could not load PDF. You can download it instead.</p>
-                <button className="btn btn-primary" onClick={handleDownload}>
-                  <Download size={16} />
-                  Download PDF
-                </button>
-              </div>
-            ) : (
-              <>
-                <Document
-                  file={fileUrl}
-                  onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-                  onLoadError={(err) => {
-                    console.error('PDF load error:', err);
-                    setPdfError(err.message);
-                  }}
-                  loading={<div className="loading">Loading PDF...</div>}
-                >
-                  <Page 
-                    pageNumber={pageNumber} 
-                    width={800}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={true}
-                  />
-                </Document>
-                {numPages > 1 && (
-                  <div className="pdf-controls">
-                    <button 
-                      className="btn btn-sm" 
-                      disabled={pageNumber <= 1}
-                      onClick={() => setPageNumber(p => p - 1)}
-                    >
-                      Previous
-                    </button>
-                    <span>Page {pageNumber} of {numPages}</span>
-                    <button 
-                      className="btn btn-sm" 
-                      disabled={pageNumber >= numPages}
-                      onClick={() => setPageNumber(p => p + 1)}
-                    >
-                      Next
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        );
-
-      case 'csv': {
-        const rows = parseCSV(content);
-        if (rows.length === 0) return <pre className="text-view"><code>{content}</code></pre>;
-        
-        return (
-          <div className="csv-viewer">
-            <table className="csv-table">
-              <thead>
-                <tr>
-                  {rows[0].map((cell, i) => <th key={i}>{cell}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.slice(1).map((row, i) => (
-                  <tr key={i}>
-                    {row.map((cell, j) => <td key={j}>{cell}</td>)}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-      }
-
       case 'markdown':
         return (
           <div className="markdown-content">
@@ -345,7 +250,16 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
         return (
           <div className="code-container">
             <pre className="line-numbers">
-              <code ref={codeRef} className={`language-${language}`}>{content}</code>
+              <code ref={codeRef} className={language ? `language-${language}` : ''}>{content}</code>
+            </pre>
+          </div>
+        );
+
+      case 'text':
+        return (
+          <div className="code-container">
+            <pre className="text-view">
+              <code ref={codeRef}>{content}</code>
             </pre>
           </div>
         );
@@ -353,6 +267,7 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
       case 'binary':
         return (
           <div className="binary-viewer">
+            <FileText size={48} style={{ opacity: 0.5, marginBottom: '1rem' }} />
             <p>This file cannot be previewed.</p>
             <button className="btn btn-primary" onClick={handleDownload}>
               <Download size={16} />
@@ -362,7 +277,7 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
         );
 
       default:
-        return <pre className="text-view"><code>{content}</code></pre>;
+        return <div className="loading">Loading...</div>;
     }
   };
 
@@ -370,7 +285,7 @@ export function FileViewerModal({ path, onClose }: FileViewerModalProps) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className={`modal-content file-viewer ${fileType === 'image' || fileType === 'pdf' ? 'wide' : ''}`} onClick={(e) => e.stopPropagation()}>
+      <div className={`modal-content file-viewer ${fileType === 'image' ? 'wide' : ''}`} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>{fileName}</h3>
           <div className="modal-actions">

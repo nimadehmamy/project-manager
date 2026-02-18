@@ -42,7 +42,7 @@ export interface ProjectStats {
   total_size: string;
 }
 
-export type TabType = 'summary' | 'todos' | 'progress' | 'files' | 'graph' | 'chat';
+export type TabType = 'summary' | 'todos' | 'progress' | 'files' | 'graph' | 'chat' | 'profile';
 
 export interface User {
   username: string;

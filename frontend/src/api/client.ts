@@ -99,6 +99,60 @@ class ApiClient {
     const response = await this.client.get('/api/stats');
     return response.data;
   }
+
+  // Profile
+  async getProfile() {
+    const response = await this.client.get('/api/profile');
+    return response.data;
+  }
+
+  async updateProfile(currentPassword: string, newUsername?: string, newPassword?: string) {
+    const response = await this.client.post('/api/profile', {
+      current_password: currentPassword,
+      new_username: newUsername,
+      new_password: newPassword,
+    });
+    return response.data;
+  }
+
+  // Zellij
+  async getZellijStatus() {
+    const response = await this.client.get('/api/zellij/status');
+    return response.data;
+  }
+
+  async getZellijSessions() {
+    const response = await this.client.get('/api/zellij/sessions');
+    return response.data;
+  }
+
+  async getProjectZellijSession(project: string) {
+    const response = await this.client.get(`/api/zellij/project-session?project=${encodeURIComponent(project)}`);
+    return response.data;
+  }
+
+  async bindZellijSession(project: string, sessionName: string) {
+    const response = await this.client.post('/api/zellij/bind', {
+      project,
+      session_name: sessionName,
+    });
+    return response.data;
+  }
+
+  async createZellijSession(project: string, agentType: string = 'claude') {
+    const response = await this.client.post('/api/zellij/create', {
+      project,
+      agent_type: agentType,
+    });
+    return response.data;
+  }
+
+  // WebSocket for terminal
+  createTerminalWebSocket(): WebSocket {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/terminal`;
+    return new WebSocket(wsUrl);
+  }
 }
 
 export const api = new ApiClient();

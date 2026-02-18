@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Folder, File, ChevronRight, Download, Eye } from 'lucide-react';
 import { useFiles } from '../../hooks/useProjects';
 import { FileViewerModal } from './FileViewerModal';
@@ -12,6 +12,13 @@ export function FilesTab({ projectPath }: FilesTabProps) {
   const [currentPath, setCurrentPath] = useState(projectPath);
   const [viewingFile, setViewingFile] = useState<string | null>(null);
   const { data, isLoading } = useFiles(currentPath);
+
+  // Update currentPath when projectPath changes (for persistent tabs)
+  useEffect(() => {
+    if (projectPath && projectPath !== currentPath) {
+      setCurrentPath(projectPath);
+    }
+  }, [projectPath]);
 
   const handleFileClick = (entry: FileEntry) => {
     if (entry.is_dir) {

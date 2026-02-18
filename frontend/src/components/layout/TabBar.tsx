@@ -1,3 +1,5 @@
+import { Sun, Moon } from 'lucide-react';
+import { useTheme } from '../../contexts/ThemeContext';
 import type { TabType } from '../../types';
 
 interface TabBarProps {
@@ -5,27 +7,53 @@ interface TabBarProps {
   onTabChange: (tab: TabType) => void;
 }
 
-const tabs: { id: TabType; label: string }[] = [
+const mainTabs: { id: TabType; label: string }[] = [
+  { id: 'progress', label: 'Progress' },
   { id: 'summary', label: 'Summary' },
   { id: 'todos', label: 'Todos' },
-  { id: 'progress', label: 'Progress' },
   { id: 'files', label: 'Files' },
   { id: 'graph', label: 'Graph' },
   { id: 'chat', label: 'Chat' },
 ];
 
+const rightTabs: { id: TabType; label: string }[] = [
+  { id: 'profile', label: 'Profile' },
+];
+
 export function TabBar({ activeTab, onTabChange }: TabBarProps) {
+  const { theme, toggleTheme } = useTheme();
+
   return (
     <div className="tab-bar">
-      {tabs.map((tab) => (
+      <div className="tab-group main-tabs">
+        {mainTabs.map((tab) => (
+          <button
+            key={tab.id}
+            className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+            onClick={() => onTabChange(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <div className="tab-group right-tabs">
         <button
-          key={tab.id}
-          className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-          onClick={() => onTabChange(tab.id)}
+          className="theme-toggle"
+          onClick={toggleTheme}
+          title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
         >
-          {tab.label}
+          {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
         </button>
-      ))}
+        {rightTabs.map((tab) => (
+          <button
+            key={tab.id}
+            className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+            onClick={() => onTabChange(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

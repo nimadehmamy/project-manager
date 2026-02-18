@@ -38,8 +38,20 @@ from config import (
     SECRET_KEY,
 )
 
+from zellij_manager import get_zellij_manager
+
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+
+# Initialize SocketIO for WebSocket support
+from flask_socketio import SocketIO, emit
+try:
+    import eventlet
+    async_mode = 'eventlet'
+except ImportError:
+    async_mode = 'threading'
+
+socketio = SocketIO(app, async_mode=async_mode, cors_allowed_origins="*", ping_timeout=60)
 
 
 def get_ssh_client():
@@ -554,6 +566,31 @@ def api_project_progress_update():
         with sftp.file(progress_file, 'w') as f:
             f.write(yaml_content)
         
+        # Check if README.md and update_task.py exist, if not copy them
+        local_pm_dir = Path(__file__).parent / '.project_manager'
+        
+        # Copy README.md if missing
+        try:
+            sftp.stat(f"{progress_dir}/README.md")
+        except FileNotFoundError:
+            readme_local = local_pm_dir / 'README.md'
+            if readme_local.exists():
+                with open(readme_local, 'r') as f:
+                    readme_content = f.read()
+                with sftp.file(f"{progress_dir}/README.md", 'w') as f:
+                    f.write(readme_content)
+        
+        # Copy update_task.py if missing
+        try:
+            sftp.stat(f"{progress_dir}/update_task.py")
+        except FileNotFoundError:
+            script_local = local_pm_dir / 'update_task.py'
+            if script_local.exists():
+                with open(script_local, 'r') as f:
+                    script_content = f.read()
+                with sftp.file(f"{progress_dir}/update_task.py", 'w') as f:
+                    f.write(script_content)
+        
         sftp.close()
         client.close()
         
@@ -611,6 +648,25 @@ def api_project_progress_init():
         with sftp.file(progress_file, 'w') as f:
             f.write(yaml_content)
         
+        # Copy README.md and update_task.py from local template
+        local_pm_dir = Path(__file__).parent / '.project_manager'
+        
+        # Copy README.md
+        readme_local = local_pm_dir / 'README.md'
+        if readme_local.exists():
+            with open(readme_local, 'r') as f:
+                readme_content = f.read()
+            with sftp.file(f"{progress_dir}/README.md", 'w') as f:
+                f.write(readme_content)
+        
+        # Copy update_task.py
+        script_local = local_pm_dir / 'update_task.py'
+        if script_local.exists():
+            with open(script_local, 'r') as f:
+                script_content = f.read()
+            with sftp.file(f"{progress_dir}/update_task.py", 'w') as f:
+                f.write(script_content)
+        
         sftp.close()
         client.close()
         
@@ -655,19 +711,298 @@ def api_stats():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/zellij/status')
+@require_auth
+def api_zellij_status():
+    """Check if Zellij is available."""
+    manager = get_zellij_manager()
+    return jsonify({
+        'available': manager.is_zellij_available()
+    })
+
+
+@app.route('/api/zellij/sessions')
+@require_auth
+def api_zellij_sessions():
+    """List all Zellij sessions."""
+    manager = get_zellij_manager()
+    
+    if not manager.is_zellij_available():
+        return jsonify({'error': 'Zellij is not installed or not in PATH'}), 503
+    
+    sessions = manager.list_sessions()
+    return jsonify({
+        'sessions': [s.to_dict() for s in sessions]
+    })
+
+
+@app.route('/api/zellij/project-session')
+@require_auth
+def api_zellij_project_session():
+    """Get the Zellij session for a specific project."""
+    project = request.args.get('project', '')
+    
+    if not project:
+        return jsonify({'error': 'No project specified'}), 400
+    
+    safe_path = sanitize_path(project)
+    if safe_path is None:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    manager = get_zellij_manager()
+    
+    if not manager.is_zellij_available():
+        return jsonify({'error': 'Zellij is not installed'}), 503
+    
+    session = manager.get_project_session(safe_path)
+    
+    if session:
+        return jsonify({
+            'found': True,
+            'session': session.to_dict()
+        })
+    else:
+        return jsonify({
+            'found': False,
+            'session': None
+        })
+
+
+@app.route('/api/zellij/bind', methods=['POST'])
+@require_auth
+def api_zellij_bind():
+    """Bind a project to a Zellij session."""
+    data = request.get_json() or {}
+    project = data.get('project', '')
+    session_name = data.get('session_name', '')
+    
+    if not project or not session_name:
+        return jsonify({'error': 'Project and session_name are required'}), 400
+    
+    safe_path = sanitize_path(project)
+    if safe_path is None:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    manager = get_zellij_manager()
+    
+    if not manager.is_zellij_available():
+        return jsonify({'error': 'Zellij is not installed'}), 503
+    
+    success = manager.bind_session(safe_path, session_name)
+    
+    if success:
+        return jsonify({
+            'success': True,
+            'message': f'Project bound to session {session_name}'
+        })
+    else:
+        return jsonify({'error': 'Failed to bind session'}), 500
+
+
+@app.route('/api/zellij/create', methods=['POST'])
+@require_auth
+def api_zellij_create():
+    """Create a new Zellij session for a project."""
+    data = request.get_json() or {}
+    project = data.get('project', '')
+    agent_type = data.get('agent_type', 'claude')
+    
+    if not project:
+        return jsonify({'error': 'No project specified'}), 400
+    
+    safe_path = sanitize_path(project)
+    if safe_path is None:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    manager = get_zellij_manager()
+    
+    if not manager.is_zellij_available():
+        return jsonify({'error': 'Zellij is not installed'}), 503
+    
+    session_name = manager.create_session(safe_path, agent_type)
+    
+    if session_name:
+        return jsonify({
+            'success': True,
+            'session_name': session_name,
+            'message': f'Session {session_name} created'
+        })
+    else:
+        return jsonify({'error': 'Failed to create session'}), 500
+
+
+# SocketIO terminal handlers (default namespace)
+@socketio.on('connect')
+def handle_connect():
+    """Handle client connection."""
+    print(f"Client connected: {request.sid}")
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnection."""
+    print(f"Client disconnected: {request.sid}")
+
+
+# Global store for SSH channels (keyed by socket session ID)
+ssh_channels = {}
+
+@socketio.on('new_terminal')
+def handle_new_terminal(data):
+    """Create a new SSH terminal in a directory."""
+    import threading
+    import time
+    
+    project_path = data.get('path', '~')
+    print(f"New terminal requested for: {project_path}")
+    
+    try:
+        manager = get_zellij_manager()
+        ssh_client = manager.get_ssh_client_for_terminal()
+        channel = ssh_client.invoke_shell(term='xterm-256color', width=80, height=24)
+        
+        # Store channel for input handling
+        ssh_channels[request.sid] = {'channel': channel, 'client': ssh_client}
+        
+        time.sleep(0.5)
+        channel.send(f'cd {project_path}\n')
+        # Don't clear - let user see the prompt
+        
+        emit('status', {'status': 'connected', 'path': project_path})
+        print(f"Terminal connected to {project_path}, sid={request.sid}")
+        
+        # Start output forwarding in background thread
+        def forward_output():
+            try:
+                while True:
+                    if channel and not channel.closed and channel.recv_ready():
+                        try:
+                            data = channel.recv(4096)
+                            if data:
+                                socketio.emit('output', {'data': data.decode('utf-8', errors='replace')}, 
+                                            room=request.sid)
+                            else:
+                                break
+                        except Exception as e:
+                            print(f"Recv error: {e}")
+                            break
+                    elif channel.closed:
+                        break
+                    else:
+                        time.sleep(0.01)
+            except Exception as e:
+                print(f"Forward thread error: {e}")
+            finally:
+                print(f"Forward thread ended for {request.sid}")
+                if request.sid in ssh_channels:
+                    del ssh_channels[request.sid]
+                try:
+                    channel.close()
+                    ssh_client.close()
+                except:
+                    pass
+        
+        t = threading.Thread(target=forward_output)
+        t.daemon = True
+        t.start()
+        
+    except Exception as e:
+        print(f"New terminal error: {e}")
+        import traceback
+        traceback.print_exc()
+        emit('error', {'error': str(e)})
+
+
+@socketio.on('input')
+def handle_input(data):
+    """Handle terminal input."""
+    sid = request.sid
+    input_data = data.get('data', '')
+    
+    if sid in ssh_channels:
+        channel = ssh_channels[sid]['channel']
+        try:
+            channel.send(input_data)
+        except Exception as e:
+            print(f"Input error: {e}")
+    else:
+        print(f"No channel found for sid={sid}")
+
+
+@socketio.on('attach')
+def handle_attach(data):
+    """Attach to a Zellij session."""
+    import threading
+    import time
+    
+    session_name = data.get('session')
+    print(f"Attach requested to session: {session_name}")
+    
+    try:
+        manager = get_zellij_manager()
+        ssh_client = manager.get_ssh_client_for_terminal()
+        channel = ssh_client.invoke_shell(term='xterm-256color', width=80, height=24)
+        
+        time.sleep(0.3)
+        channel.send('export PATH="$HOME/.cargo/bin:$PATH"\n')
+        time.sleep(0.1)
+        channel.send(f'zellij attach {session_name}\n')
+        
+        emit('status', {'status': 'connected', 'session': session_name})
+        print(f"Attached to {session_name}")
+        
+        # Start output forwarding
+        def forward_output():
+            try:
+                while True:
+                    if channel and channel.recv_ready():
+                        try:
+                            data = channel.recv(4096)
+                            if data:
+                                socketio.emit('output', {'data': data.decode('utf-8', errors='replace')}, 
+                                            room=request.sid)
+                            else:
+                                break
+                        except:
+                            break
+                    else:
+                        time.sleep(0.01)
+            except Exception as e:
+                print(f"Forward error: {e}")
+        
+        t = threading.Thread(target=forward_output)
+        t.daemon = True
+        t.start()
+        
+    except Exception as e:
+        print(f"Attach error: {e}")
+        emit('error', {'error': str(e)})
+
+
+@socketio.on('input')
+def handle_input(data):
+    """Handle terminal input."""
+    # TODO: Implement input handling with session storage
+    print(f"Input received: {data}")
+
+
+# Debug ping/pong
+@socketio.on('ping_test')
+def handle_ping(data):
+    """Debug ping handler."""
+    print(f"Ping received: {data}")
+    emit('pong_test', {'received': data, 'server_time': str(datetime.now())})
+
+
 if __name__ == '__main__':
     use_https = '--https' in sys.argv
     
+    print(f"Starting Project Manager on https://{HOST}:{PORT}")
+    print(f"Remote server: {BEAST_HOST}:{BEAST_PORT}")
+    print(f"Projects path: {ROOT_JAIL}")
+    
+    # Use SocketIO's run method which handles WebSockets properly
     if use_https:
-        # Create SSL context with self-signed cert
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        context.load_cert_chain('cert.pem', 'key.pem')
-        print(f"Starting Project Manager on https://{HOST}:{PORT}")
-        print(f"Remote server: {BEAST_HOST}:{BEAST_PORT}")
-        print(f"Projects path: {ROOT_JAIL}")
-        app.run(host=HOST, port=PORT, debug=DEBUG, ssl_context=context)
+        socketio.run(app, host=HOST, port=PORT, certfile='cert.pem', keyfile='key.pem')
     else:
-        print(f"Starting Project Manager on https://{HOST}:{PORT}")
-        print(f"Remote server: {BEAST_HOST}:{BEAST_PORT}")
-        print(f"Projects path: {ROOT_JAIL}")
-        app.run(host=HOST, port=PORT, debug=DEBUG)
+        socketio.run(app, host=HOST, port=PORT)

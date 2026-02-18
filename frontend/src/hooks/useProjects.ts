@@ -42,6 +42,8 @@ export const useProgress = (projectPath: string | null) => {
       return api.getProgress(projectPath);
     },
     enabled: !!projectPath,
+    refetchOnMount: 'always',
+    staleTime: 0,
   });
 };
 

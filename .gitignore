@@ -36,3 +36,4 @@ Thumbs.db
 # Working directories (user's projects)
 __work/
 projects/
+terminal-service/node_modules/

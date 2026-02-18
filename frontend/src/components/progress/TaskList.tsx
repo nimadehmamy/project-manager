@@ -21,7 +21,6 @@ import type { Task } from '../../types';
 
 interface LocalTask extends Task {
   _localId: string;
-  _synced: boolean; // Track if synced with server
 }
 
 interface TaskItemProps {
@@ -49,13 +48,16 @@ function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0 }: TaskIte
     setLocalStatus(task.status);
   }, [task.status]);
 
+  // Sync edit form when entering edit mode
   useEffect(() => {
-    setEditForm({
-      name: task.name,
-      status: task.status,
-      description: task.description || '',
-    });
-  }, [task]);
+    if (isEditing) {
+      setEditForm({
+        name: task.name,
+        status: task.status,
+        description: task.description || '',
+      });
+    }
+  }, [isEditing, task]);
 
   const handleSave = () => {
     onUpdate(task._localId, {
@@ -67,11 +69,6 @@ function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0 }: TaskIte
   };
 
   const handleCancel = () => {
-    setEditForm({
-      name: task.name,
-      status: task.status,
-      description: task.description || '',
-    });
     setIsEditing(false);
   };
 
@@ -103,6 +100,14 @@ function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0 }: TaskIte
             placeholder="Task name..."
             style={{ fontSize: '0.9375rem' }}
             autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSave();
+              } else if (e.key === 'Escape') {
+                handleCancel();
+              }
+            }}
           />
           <select
             value={editForm.status}
@@ -119,6 +124,14 @@ function TaskItem({ task, onUpdate, onDelete, onAddSubtask, depth = 0 }: TaskIte
             onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
             placeholder="Description..."
             rows={2}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && e.ctrlKey) {
+                e.preventDefault();
+                handleSave();
+              } else if (e.key === 'Escape') {
+                handleCancel();
+              }
+            }}
           />
           <div className="task-edit-actions">
             <button className="btn btn-sm" onClick={handleCancel}>Cancel</button>
@@ -253,44 +266,14 @@ function SortableTaskItem({ task, onUpdate, onDelete, onAddSubtask }: SortableTa
 }
 
 interface TaskListProps {
-  tasks: Task[];
+  tasks: LocalTask[];
   onUpdate: (localId: string, updates: Partial<Task>) => void;
   onDelete: (localId: string) => void;
   onAddSubtask: (localId: string) => void;
   onReorder: (tasks: Task[]) => void;
-  onTasksChange?: (tasks: LocalTask[]) => void;
 }
 
-// Generate unique local IDs that persist across renders
-let idCounter = 0;
-const generateLocalId = () => `task-${Date.now()}-${idCounter++}`;
-
-export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder, onTasksChange }: TaskListProps) {
-  const [localTasks, setLocalTasks] = useState<LocalTask[]>([]);
-  const [initialized, setInitialized] = useState(false);
-  
-  // Only initialize once, then manage locally
-  useEffect(() => {
-    if (!initialized && tasks.length > 0) {
-      const addLocalIds = (taskList: Task[]): LocalTask[] => {
-        return taskList.map((task) => ({
-          ...task,
-          _localId: generateLocalId(),
-          _synced: true,
-          subtasks: task.subtasks ? addLocalIds(task.subtasks) : [],
-        }));
-      };
-      
-      const newLocalTasks = addLocalIds(tasks);
-      setLocalTasks(newLocalTasks);
-      onTasksChange?.(newLocalTasks);
-      setInitialized(true);
-    } else if (tasks.length === 0) {
-      setLocalTasks([]);
-      setInitialized(false);
-    }
-  }, [tasks, initialized, onTasksChange]);
-
+export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder }: TaskListProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -300,19 +283,19 @@ export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder, o
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      const oldIndex = localTasks.findIndex(t => t._localId === active.id);
-      const newIndex = localTasks.findIndex(t => t._localId === over.id);
+      const oldIndex = tasks.findIndex(t => t._localId === active.id);
+      const newIndex = tasks.findIndex(t => t._localId === over.id);
       
       if (oldIndex !== -1 && newIndex !== -1) {
-        const newTasks = arrayMove(localTasks, oldIndex, newIndex);
-        setLocalTasks(newTasks);
-        const cleanTasks = newTasks.map(({ _localId, _synced, ...task }) => task);
+        const newTasks = arrayMove(tasks, oldIndex, newIndex);
+        // Convert back to plain tasks for parent
+        const cleanTasks = newTasks.map(({ _localId, ...task }) => task);
         onReorder(cleanTasks);
       }
     }
   };
 
-  if (localTasks.length === 0) {
+  if (tasks.length === 0) {
     return (
       <div className="progress-empty">
         <p>No tasks yet. Click "Add Task" to get started!</p>
@@ -322,9 +305,9 @@ export function TaskList({ tasks, onUpdate, onDelete, onAddSubtask, onReorder, o
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <SortableContext items={localTasks.map(t => t._localId)} strategy={verticalListSortingStrategy}>
+      <SortableContext items={tasks.map(t => t._localId)} strategy={verticalListSortingStrategy}>
         <ul className="task-list">
-          {localTasks.map((task) => (
+          {tasks.map((task) => (
             <SortableTaskItem
               key={task._localId}
               task={task}

@@ -1,4 +1,5 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useProgress } from '../../hooks/useProjects';
 import { api } from '../../api/client';
 import { ProgressHeader } from './ProgressHeader';
@@ -17,7 +18,29 @@ interface LocalTask extends Task {
   _localId: string;
 }
 
+// Generate unique local ID
+let idCounter = 0;
+const generateLocalId = () => `local-${Date.now()}-${idCounter++}`;
+
+// Convert server tasks to local tasks with stable IDs
+const toLocalTasks = (tasks: Task[]): LocalTask[] => {
+  return tasks.map(task => ({
+    ...task,
+    _localId: task.id ? `task-${task.id}` : generateLocalId(),
+    subtasks: task.subtasks ? toLocalTasks(task.subtasks) : [],
+  }));
+};
+
+// Convert local tasks back to server format
+const toServerTasks = (tasks: LocalTask[]): Task[] => {
+  return tasks.map(({ _localId, ...task }) => ({
+    ...task,
+    subtasks: task.subtasks ? toServerTasks(task.subtasks as LocalTask[]) : [],
+  }));
+};
+
 export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
+  const queryClient = useQueryClient();
   const { data: progressData, isLoading, refetch } = useProgress(projectPath);
   const [isAdding, setIsAdding] = useState(false);
   const [addingToId, setAddingToId] = useState<string | null>(null);
@@ -25,10 +48,25 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
   
   // Local state for optimistic updates
   const [localTasks, setLocalTasks] = useState<LocalTask[]>([]);
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Refetch when component mounts to get fresh data
+  useEffect(() => {
+    if (projectPath) {
+      refetch();
+    }
+  }, [projectPath, refetch]);
 
   const initialized = progressData?.dir_exists && progressData?.found;
   const notInitialized = progressData && !progressData.dir_exists;
+
+  // Sync localTasks when data loads from server
+  useEffect(() => {
+    if (progressData?.data?.tasks) {
+      setLocalTasks(toLocalTasks(progressData.data.tasks));
+    } else {
+      setLocalTasks([]);
+    }
+  }, [progressData?.data?.tasks]);
 
   const handleInit = async () => {
     if (!projectPath) return;
@@ -42,33 +80,23 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
   };
 
   // Debounced save to backend
-  const debouncedSave = useCallback((tasks: Task[]) => {
-    if (!projectPath) return;
-    
-    // Clear existing timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
+  const debouncedSave = useCallback(async (tasks: Task[]) => {
+    if (!projectPath || !progressData?.data) return;
     
     setSaving(true);
-    
-    // Debounce save by 500ms
-    saveTimeoutRef.current = setTimeout(async () => {
-      try {
-        const data = progressData?.data;
-        if (data) {
-          await api.saveProgress(projectPath, {
-            ...data,
-            tasks,
-          });
-        }
-      } catch (err) {
-        console.error('Failed to save:', err);
-      } finally {
-        setSaving(false);
-      }
-    }, 500);
-  }, [projectPath, progressData]);
+    try {
+      await api.saveProgress(projectPath, {
+        ...progressData.data,
+        tasks,
+      });
+      // Invalidate cache so next visit gets fresh data
+      queryClient.invalidateQueries({ queryKey: ['progress', projectPath] });
+    } catch (err) {
+      console.error('Failed to save:', err);
+    } finally {
+      setSaving(false);
+    }
+  }, [projectPath, progressData?.data, queryClient]);
 
   // Update task - optimistic
   const handleUpdateTask = useCallback((localId: string, updates: Partial<Task>) => {
@@ -78,7 +106,7 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
           if (task._localId === localId) {
             return { ...task, ...updates };
           }
-          if (task.subtasks) {
+          if (task.subtasks && task.subtasks.length > 0) {
             return { ...task, subtasks: updateInTree(task.subtasks as LocalTask[]) };
           }
           return task;
@@ -87,9 +115,8 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
       
       const newTasks = updateInTree(prev);
       
-      // Debounced save
-      const cleanTasks = newTasks.map(({ _localId, ...t }) => t);
-      debouncedSave(cleanTasks);
+      // Save to server
+      debouncedSave(toServerTasks(newTasks));
       
       return newTasks;
     });
@@ -110,11 +137,7 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
       };
       
       const newTasks = deleteFromTree(prev);
-      
-      // Immediate save for delete
-      const cleanTasks = newTasks.map(({ _localId, ...t }) => t);
-      debouncedSave(cleanTasks);
-      
+      debouncedSave(toServerTasks(newTasks));
       return newTasks;
     });
   }, [debouncedSave]);
@@ -122,8 +145,8 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
   // Add task - optimistic
   const handleAddTask = useCallback((name: string, status: Task['status'], description: string) => {
     const newTask: LocalTask = {
-      id: Date.now().toString(),
-      _localId: `new-${Date.now()}`,
+      id: `new-${Date.now()}`,
+      _localId: generateLocalId(),
       name,
       status,
       description,
@@ -144,7 +167,7 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
                 subtasks: [...(task.subtasks || []), newTask],
               };
             }
-            if (task.subtasks) {
+            if (task.subtasks && task.subtasks.length > 0) {
               return { ...task, subtasks: addToParent(task.subtasks as LocalTask[]) };
             }
             return task;
@@ -156,10 +179,7 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
         newTasks = [...prev, newTask];
       }
       
-      // Immediate save
-      const cleanTasks = newTasks.map(({ _localId, ...t }) => t);
-      debouncedSave(cleanTasks);
-      
+      debouncedSave(toServerTasks(newTasks));
       return newTasks;
     });
 
@@ -169,29 +189,11 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
 
   // Reorder tasks - optimistic
   const handleReorder = useCallback((tasks: Task[]) => {
-    // Rebuild local IDs for new order
-    const rebuildIds = (taskList: Task[], parentId = ''): LocalTask[] => {
-      return taskList.map((task, index) => {
-        const localId = parentId ? `${parentId}-${index}` : `task-${index}`;
-        return {
-          ...task,
-          _localId: localId,
-          subtasks: task.subtasks ? rebuildIds(task.subtasks, localId) : [],
-        } as LocalTask;
-      });
-    };
-    
-    const newLocalTasks = rebuildIds(tasks);
+    // Convert back to local tasks with IDs
+    const newLocalTasks = toLocalTasks(tasks);
     setLocalTasks(newLocalTasks);
-    
-    // Immediate save
     debouncedSave(tasks);
   }, [debouncedSave]);
-
-  // Sync local tasks when data loads
-  const handleTasksChange = useCallback((tasks: LocalTask[]) => {
-    setLocalTasks(tasks);
-  }, []);
 
   if (isLoading) {
     return <div className="loading">Loading progress...</div>;
@@ -223,7 +225,8 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
   }
 
   const data = progressData.data;
-  const displayTasks = localTasks.length > 0 ? localTasks : data.tasks as LocalTask[];
+  // Convert local tasks to plain tasks for child components
+  const displayTasks = toServerTasks(localTasks);
 
   return (
     <div className="progress-container">
@@ -236,7 +239,7 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
         }}
       />
       
-      <ProgressStats tasks={displayTasks.map(({ _localId, ...t }) => t)} />
+      <ProgressStats tasks={displayTasks} />
       
       {isAdding && (
         <AddTaskForm
@@ -250,7 +253,7 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
       )}
       
       <TaskList
-        tasks={data.tasks}
+        tasks={localTasks}
         onUpdate={handleUpdateTask}
         onDelete={handleDeleteTask}
         onAddSubtask={(localId) => {
@@ -258,7 +261,6 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
           setIsAdding(true);
         }}
         onReorder={handleReorder}
-        onTasksChange={handleTasksChange}
       />
     </div>
   );
