@@ -108,7 +108,7 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
-      fontFamily: '"JetBrainsMono Nerd Font", "JetBrainsMono NF", "JetBrainsMonoNL Nerd Font", "JetBrains Mono", "Fira Code", "Hack", "DejaVu Sans Mono", monospace',
+      fontFamily: '"JetBrains Mono", "Fira Code", "Hack", "DejaVu Sans Mono", "SF Mono", "Monaco", "Menlo", monospace',
       theme: {
         background: '#1e1e1e',
         foreground: '#d4d4d4',

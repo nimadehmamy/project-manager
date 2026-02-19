@@ -700,31 +700,53 @@ def api_managed_projects():
     except Exception:
         pass
     
-    # Scan for projects
+    # Scan for projects using BFS from ROOT_JAIL
     try:
         client = get_ssh_client()
         sftp = client.open_sftp()
         
-        # Find all directories containing .project_manager
+        # BFS to find all .project_manager directories
         # Exclude common non-project directories
-        exclude_dirs = ['wandb', '.git', '.venv', 'venv', 'node_modules', 
+        exclude_dirs = {'wandb', '.git', '.venv', 'venv', 'node_modules', 
                        'results', 'logs', '__pycache__', '.pytest_cache',
-                       'dist', 'build', '.vscode', '.idea']
-        exclude_pattern = ' -o '.join([f"-name '{d}' -prune" for d in exclude_dirs])
+                       'dist', 'build', '.vscode', '.idea', '.git'}
         
-        cmd = (
-            f"find {ROOT_JAIL} -mindepth 1 -maxdepth 3 "
-            f"\( {exclude_pattern} \) -o "
-            f"-type d -name '.project_manager' -print 2>/dev/null"
-        )
+        pm_dirs = []
+        visited = set()
+        queue = [ROOT_JAIL]
         
-        stdin, stdout, stderr = client.exec_command(cmd)
-        pm_dirs = stdout.read().decode().strip().split('\n')
-        pm_dirs = [d for d in pm_dirs if d]
+        while queue:
+            current_dir = queue.pop(0)
+            if current_dir in visited:
+                continue
+            visited.add(current_dir)
+            
+            try:
+                # Check if this directory has .project_manager
+                try:
+                    sftp.stat(f"{current_dir}/.project_manager")
+                    pm_dirs.append(f"{current_dir}/.project_manager")
+                except FileNotFoundError:
+                    pass
+                
+                # List subdirectories and add to queue (BFS)
+                if len(current_dir.split('/')) - len(ROOT_JAIL.split('/')) < 10:  # Max depth
+                    for entry in sftp.listdir_attr(current_dir):
+                        if stat.S_ISDIR(entry.st_mode):
+                            name = entry.filename
+                            if name not in exclude_dirs and not name.startswith('.'):
+                                full_path = f"{current_dir}/{name}"
+                                queue.append(full_path)
+            except Exception:
+                continue
         
         projects = []
         for pm_dir in pm_dirs:
             project_path = os.path.dirname(pm_dir)
+            # Get relative path from ROOT_JAIL
+            rel_path = project_path[len(ROOT_JAIL):].lstrip('/')
+            if not rel_path:
+                rel_path = os.path.basename(project_path)
             project_name = os.path.basename(project_path)
             
             # Try to read tasks.yml
@@ -742,7 +764,7 @@ def api_managed_projects():
                 progress = (completed / total * 100) if total > 0 else 0
                 
                 projects.append({
-                    'path': project_path,
+                    'path': rel_path,  # Use relative path
                     'name': data.get('project', {}).get('name', project_name),
                     'status': data.get('project', {}).get('status', 'active'),
                     'total_tasks': total,
@@ -755,7 +777,7 @@ def api_managed_projects():
             except Exception:
                 # Project has .project_manager but no valid tasks.yml
                 projects.append({
-                    'path': project_path,
+                    'path': rel_path,
                     'name': project_name,
                     'status': 'active',
                     'total_tasks': 0,

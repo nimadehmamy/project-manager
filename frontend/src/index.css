@@ -1,20 +1,4 @@
-/* Nerd Fonts - for terminal symbols */
-@font-face {
-  font-family: 'JetBrainsMono Nerd Font';
-  src: url('https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.1.1/patched-fonts/JetBrainsMono/Ligatures/Regular/complete/JetBrains%20Mono%20Regular%20Nerd%20Font%20Complete.woff2') format('woff2');
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'JetBrainsMono Nerd Font';
-  src: url('https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.1.1/patched-fonts/JetBrainsMono/Ligatures/Bold/complete/JetBrains%20Mono%20Bold%20Nerd%20Font%20Complete.woff2') format('woff2');
-  font-weight: bold;
-  font-style: normal;
-  font-display: swap;
-}
-
+/* Use system Nerd Fonts if available, otherwise fallback to monospace */
 :root {
   --primary-color: #2563eb;
   --primary-hover: #1d4ed8;
@@ -1669,7 +1653,7 @@ code[class*="language-"] {
 }
 
 .xterm-rows {
-  font-family: 'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrains Mono NL', 'JetBrains Mono', 'Fira Code', 'Hack', 'DejaVu Sans Mono', 'Noto Sans Mono', monospace !important;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Hack', 'DejaVu Sans Mono', 'SF Mono', 'Monaco', 'Menlo', monospace !important;
   line-height: 1.2 !important;
 }
 
