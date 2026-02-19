@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Folder, File, ChevronRight, Download, Eye } from 'lucide-react';
+import { Folder, File, ChevronRight, Download, Eye, RefreshCw } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useFiles } from '../../hooks/useProjects';
 import { FileViewerModal } from './FileViewerModal';
 import type { FileEntry } from '../../types';
@@ -11,7 +12,8 @@ interface FilesTabProps {
 export function FilesTab({ projectPath }: FilesTabProps) {
   const [currentPath, setCurrentPath] = useState(projectPath);
   const [viewingFile, setViewingFile] = useState<string | null>(null);
-  const { data, isLoading } = useFiles(currentPath);
+  const { data, isLoading, refetch } = useFiles(currentPath);
+  const queryClient = useQueryClient();
 
   // Update currentPath when projectPath changes (for persistent tabs)
   useEffect(() => {
@@ -19,6 +21,12 @@ export function FilesTab({ projectPath }: FilesTabProps) {
       setCurrentPath(projectPath);
     }
   }, [projectPath]);
+
+  const handleRefresh = () => {
+    // Invalidate and refetch files for current path
+    queryClient.invalidateQueries({ queryKey: ['files', currentPath] });
+    refetch();
+  };
 
   const handleFileClick = (entry: FileEntry) => {
     if (entry.is_dir) {
@@ -66,6 +74,14 @@ export function FilesTab({ projectPath }: FilesTabProps) {
               </span>
             );
           })}
+          <button 
+            className="refresh-btn" 
+            onClick={handleRefresh} 
+            title="Refresh file list"
+            disabled={isLoading}
+          >
+            <RefreshCw size={16} className={isLoading ? 'spinning' : ''} />
+          </button>
         </div>
 
         <div className="file-list">

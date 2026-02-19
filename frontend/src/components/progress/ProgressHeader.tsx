@@ -1,12 +1,14 @@
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2, RefreshCw } from 'lucide-react';
 
 interface ProgressHeaderProps {
   title: string;
   saving: boolean;
   onAddTask: () => void;
+  onRefresh: () => void;
+  isLoading?: boolean;
 }
 
-export function ProgressHeader({ title, saving, onAddTask }: ProgressHeaderProps) {
+export function ProgressHeader({ title, saving, onAddTask, onRefresh, isLoading }: ProgressHeaderProps) {
   return (
     <div className="progress-header">
       <h2 className="progress-title">📊 {title} Progress</h2>
@@ -17,6 +19,14 @@ export function ProgressHeader({ title, saving, onAddTask }: ProgressHeaderProps
             Saving...
           </span>
         )}
+        <button 
+          className="btn btn-secondary" 
+          onClick={onRefresh} 
+          title="Refresh progress"
+          disabled={isLoading}
+        >
+          <RefreshCw size={16} className={isLoading ? 'spin' : ''} />
+        </button>
         <button className="btn btn-primary" onClick={onAddTask}>
           <Plus size={16} />
           Add Task

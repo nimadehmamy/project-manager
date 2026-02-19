@@ -834,6 +834,29 @@ body {
   text-decoration: underline;
 }
 
+.breadcrumb .refresh-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.breadcrumb .refresh-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.breadcrumb .refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .file-list {
   border: 1px solid var(--border);
   border-radius: 6px;

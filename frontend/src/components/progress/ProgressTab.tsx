@@ -228,6 +228,11 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
   // Convert local tasks to plain tasks for child components
   const displayTasks = toServerTasks(localTasks);
 
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['progress', projectPath] });
+    refetch();
+  };
+
   return (
     <div className="progress-container">
       <ProgressHeader 
@@ -237,6 +242,8 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
           setAddingToId(null);
           setIsAdding(true);
         }}
+        onRefresh={handleRefresh}
+        isLoading={isLoading}
       />
       
       <ProgressStats tasks={displayTasks} />
