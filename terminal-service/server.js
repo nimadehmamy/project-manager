@@ -57,7 +57,9 @@ function createTerminal(socketId, options) {
     beastPath = '/home/nima/__work' + workDir;
   } else if (!workDir.startsWith('/home/nima')) {
     // Default: assume it's relative to /home/nima/__work
-    beastPath = '/home/nima/__work' + workDir;
+    // Handle both /path and path formats
+    const relPath = workDir.startsWith('/') ? workDir : '/' + workDir;
+    beastPath = '/home/nima/__work' + relPath;
   }
   
   // Build SSH command

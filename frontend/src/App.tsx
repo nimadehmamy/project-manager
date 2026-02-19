@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Home } from 'lucide-react';
 import { ProjectBrowser } from './components/project-browser/ProjectBrowser';
@@ -100,8 +100,18 @@ const queryClient = new QueryClient({
 });
 
 function AppContent() {
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabType>('progress');
+  // URL handling - parse project from URL hash
+  const getProjectFromUrl = () => {
+    const hash = window.location.hash.slice(1); // Remove #
+    if (hash.startsWith('project/')) {
+      return decodeURIComponent(hash.slice(8)); // Remove 'project/'
+    }
+    return null;
+  };
+
+  const urlProject = getProjectFromUrl();
+  const [selectedProject, setSelectedProject] = useState<string | null>(urlProject);
+  const [activeTab, setActiveTab] = useState<TabType>(urlProject ? 'progress' : 'home');
   const [projectName, setProjectName] = useState<string>('');
   
   // Sidebar width with localStorage persistence
@@ -109,6 +119,22 @@ function AppContent() {
     const saved = localStorage.getItem('pm-left-sidebar-width');
     return saved ? parseInt(saved, 10) : DEFAULT_LEFT_WIDTH;
   });
+
+  // Handle URL changes
+  useEffect(() => {
+    const handleHashChange = () => {
+      const project = getProjectFromUrl();
+      if (project !== selectedProject) {
+        setSelectedProject(project);
+        if (project) {
+          setActiveTab('progress');
+        }
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [selectedProject]);
 
   const handleLeftResize = useCallback((delta: number) => {
     setLeftWidth(prev => {
@@ -122,6 +148,14 @@ function AppContent() {
     setSelectedProject(path);
     setProjectName(name);
     setActiveTab('progress');
+    // Update URL
+    window.location.hash = `project/${encodeURIComponent(path)}`;
+  };
+
+  const handleHomeSelect = () => {
+    setActiveTab('home');
+    setSelectedProject(null);
+    window.location.hash = '';
   };
 
   return (
@@ -133,7 +167,7 @@ function AppContent() {
           <h3>Projects</h3>
           <button 
             className="home-icon-btn"
-            onClick={() => setActiveTab('home')}
+            onClick={handleHomeSelect}
             title="Go to Home Dashboard"
           >
             <Home size={18} />

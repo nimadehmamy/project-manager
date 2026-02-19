@@ -8,7 +8,6 @@ interface TabBarProps {
 }
 
 const mainTabs: { id: TabType; label: string }[] = [
-  { id: 'home', label: 'Home' },
   { id: 'progress', label: 'Progress' },
   { id: 'summary', label: 'Summary' },
   { id: 'todos', label: 'Todos' },

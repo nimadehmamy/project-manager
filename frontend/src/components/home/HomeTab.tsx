@@ -172,7 +172,9 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
                     className="open-project-btn"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onProjectSelect(project.path, project.name);
+                      // Ensure path starts with / for consistency
+                      const fullPath = project.path.startsWith('/') ? project.path : '/' + project.path;
+                      onProjectSelect(fullPath, project.name);
                     }}
                   >
                     Open
