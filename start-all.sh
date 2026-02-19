@@ -1,8 +1,7 @@
 #!/bin/bash
-# Start both Flask and Terminal Service
+# Start Project Manager services
 # Usage: ./start-all.sh
-# This script starts both the Flask web server (port 8000) and the Node.js terminal service (port 3001)
-# Both services must be running for the Project Manager to work correctly
+# This script starts Flask (port 8000), Terminal Service (port 3001), and Scanner Daemon
 
 # Terminal Service
 if ! pgrep -f "node.*server.js" > /dev/null; then
@@ -21,6 +20,13 @@ if ! pgrep -f "python.*app.py" > /dev/null; then
     sleep 3
 fi
 
+# Scanner Daemon (background indexer for fast project browsing)
+if ! pgrep -f "scanner_daemon.py" > /dev/null; then
+    echo "Starting Scanner Daemon..."
+    nohup python scanner_daemon.py > /tmp/scanner.log 2>&1 &
+    sleep 1
+fi
+
 echo ""
 echo "Services Status:"
 echo "================"
@@ -30,3 +36,4 @@ echo ""
 echo "PIDs:"
 echo "  Terminal Service: $(pgrep -f 'node.*server.js' 2>/dev/null | tr '\n' ' ' || echo 'not running')"
 echo "  Flask App: $(pgrep -f 'python.*app.py' 2>/dev/null | tr '\n' ' ' || echo 'not running')"
+echo "  Scanner Daemon: $(pgrep -f 'scanner_daemon.py' 2>/dev/null | tr '\n' ' ' || echo 'not running')"
