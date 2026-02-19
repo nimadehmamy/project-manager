@@ -1,7 +1,9 @@
 """Project Manager - Secure file browser for remote server."""
 
+import json
 import os
 import stat
+import time
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
@@ -679,6 +681,111 @@ def api_project_progress_init():
     except Exception as e:
         app.logger.error(f"Error initializing progress: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/projects/managed')
+@require_auth
+def api_managed_projects():
+    """Get all projects with .project_manager directory and their task progress."""
+    cache_file = '/tmp/pm_managed_projects.json'
+    cache_max_age = 300  # 5 minutes
+    
+    # Check if we have a recent cache
+    try:
+        if os.path.exists(cache_file):
+            cache_age = time.time() - os.path.getmtime(cache_file)
+            if cache_age < cache_max_age:
+                with open(cache_file, 'r') as f:
+                    return jsonify(json.load(f))
+    except Exception:
+        pass
+    
+    # Scan for projects
+    try:
+        client = get_ssh_client()
+        sftp = client.open_sftp()
+        
+        # Find all directories containing .project_manager
+        # Exclude common non-project directories
+        exclude_dirs = ['wandb', '.git', '.venv', 'venv', 'node_modules', 
+                       'results', 'logs', '__pycache__', '.pytest_cache',
+                       'dist', 'build', '.vscode', '.idea']
+        exclude_pattern = ' -o '.join([f"-name '{d}' -prune" for d in exclude_dirs])
+        
+        cmd = (
+            f"find {ROOT_JAIL} -mindepth 1 -maxdepth 3 "
+            f"\( {exclude_pattern} \) -o "
+            f"-type d -name '.project_manager' -print 2>/dev/null"
+        )
+        
+        stdin, stdout, stderr = client.exec_command(cmd)
+        pm_dirs = stdout.read().decode().strip().split('\n')
+        pm_dirs = [d for d in pm_dirs if d]
+        
+        projects = []
+        for pm_dir in pm_dirs:
+            project_path = os.path.dirname(pm_dir)
+            project_name = os.path.basename(project_path)
+            
+            # Try to read tasks.yml
+            try:
+                with sftp.file(f"{pm_dir}/tasks.yml", 'r') as f:
+                    content = f.read().decode('utf-8')
+                    data = yaml.safe_load(content) or {}
+                    
+                tasks = data.get('tasks', [])
+                total = len(tasks)
+                completed = sum(1 for t in tasks if t.get('status') == 'completed')
+                in_progress = sum(1 for t in tasks if t.get('status') == 'in_progress')
+                
+                # Calculate progress percentage
+                progress = (completed / total * 100) if total > 0 else 0
+                
+                projects.append({
+                    'path': project_path,
+                    'name': data.get('project', {}).get('name', project_name),
+                    'status': data.get('project', {}).get('status', 'active'),
+                    'total_tasks': total,
+                    'completed': completed,
+                    'in_progress': in_progress,
+                    'progress': round(progress, 1),
+                    'tasks': tasks[:10] if tasks else [],  # Limit tasks for preview
+                    'has_more_tasks': len(tasks) > 10,
+                })
+            except Exception:
+                # Project has .project_manager but no valid tasks.yml
+                projects.append({
+                    'path': project_path,
+                    'name': project_name,
+                    'status': 'active',
+                    'total_tasks': 0,
+                    'completed': 0,
+                    'in_progress': 0,
+                    'progress': 0,
+                    'tasks': [],
+                    'has_more_tasks': False,
+                })
+        
+        sftp.close()
+        client.close()
+        
+        # Sort by progress (incomplete first)
+        projects.sort(key=lambda p: (p['completed'] == p['total_tasks'], -p['progress']))
+        
+        result = {'projects': projects, 'count': len(projects)}
+        
+        # Cache result
+        try:
+            with open(cache_file, 'w') as f:
+                json.dump(result, f)
+        except Exception:
+            pass
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        app.logger.error(f"Error scanning managed projects: {e}")
+        return jsonify({'error': str(e), 'projects': [], 'count': 0}), 500
 
 
 @app.route('/api/stats')

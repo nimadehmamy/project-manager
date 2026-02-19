@@ -42,7 +42,20 @@ export interface ProjectStats {
   total_size: string;
 }
 
-export type TabType = 'summary' | 'todos' | 'progress' | 'files' | 'graph' | 'chat' | 'profile';
+export interface ManagedProject {
+  path: string;
+  name: string;
+  status: 'active' | 'paused' | 'archived';
+  total_tasks: number;
+  completed: number;
+  in_progress: number;
+  progress: number;
+  tasks: Task[];
+  has_more_tasks: boolean;
+  expanded?: boolean;
+}
+
+export type TabType = 'home' | 'progress' | 'summary' | 'todos' | 'files' | 'graph' | 'chat' | 'profile';
 
 export interface User {
   username: string;

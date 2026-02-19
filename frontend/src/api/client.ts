@@ -94,6 +94,12 @@ class ApiClient {
     return response.data;
   }
 
+  // Managed Projects (Home Dashboard)
+  async getManagedProjects() {
+    const response = await this.client.get('/api/projects/managed');
+    return response.data;
+  }
+
   // Stats
   async getStats() {
     const response = await this.client.get('/api/stats');

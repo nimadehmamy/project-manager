@@ -1,8 +1,10 @@
 import { useState, useCallback } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Home } from 'lucide-react';
 import { ProjectBrowser } from './components/project-browser/ProjectBrowser';
 import { TabBar } from './components/layout/TabBar';
 import { ResizeHandle } from './components/layout/ResizeHandle';
+import { HomeTab } from './components/home/HomeTab';
 import { SummaryTab } from './components/project-browser/SummaryTab';
 import { TodosTab } from './components/project-browser/TodosTab';
 import { ProgressTab } from './components/progress/ProgressTab';
@@ -20,14 +22,23 @@ const DEFAULT_LEFT_WIDTH = 280;
 function PersistentTabs({ 
   activeTab, 
   selectedProject, 
-  projectName 
+  projectName,
+  onProjectSelect
 }: { 
   activeTab: TabType;
   selectedProject: string | null;
   projectName: string;
+  onProjectSelect: (path: string, name: string) => void;
 }) {
   return (
     <>
+      {/* Home Tab */}
+      <div 
+        className={`tab-panel ${activeTab === 'home' ? 'tab-active' : 'tab-hidden'}`}
+      >
+        <HomeTab onProjectSelect={onProjectSelect} />
+      </div>
+
       {/* Summary Tab */}
       <div 
         className={`tab-panel ${activeTab === 'summary' ? 'tab-active' : 'tab-hidden'}`}
@@ -120,6 +131,13 @@ function AppContent() {
       <aside className="sidebar-left">
         <div className="panel-header">
           <h3>Projects</h3>
+          <button 
+            className="home-icon-btn"
+            onClick={() => setActiveTab('home')}
+            title="Go to Home Dashboard"
+          >
+            <Home size={18} />
+          </button>
         </div>
         <ProjectBrowser 
           selectedProject={selectedProject}
@@ -137,6 +155,7 @@ function AppContent() {
             activeTab={activeTab}
             selectedProject={selectedProject}
             projectName={projectName}
+            onProjectSelect={handleProjectSelect}
           />
         </div>
       </main>
