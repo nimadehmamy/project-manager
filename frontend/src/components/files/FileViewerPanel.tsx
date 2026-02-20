@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
-import { X, Download, FileText } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Download, FileText, ZoomIn, ZoomOut } from 'lucide-react';
 import { api } from '../../api/client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CodeViewer } from './CodeViewer';
 import { PdfViewer } from './PdfViewer';
+import { usePinchZoom } from '../../hooks/usePinchZoom';
 
 interface FileViewerPanelProps {
   path: string | null;
@@ -61,6 +62,16 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imageZoom, setImageZoom] = useState(1);
+  const imageZoomRef = useRef(1);
+  imageZoomRef.current = imageZoom;
+
+  const imageContainerRef = usePinchZoom<HTMLDivElement>({
+    min: 0.2,
+    max: 10,
+    getScale: () => imageZoomRef.current,
+    onZoom: setImageZoom,
+  });
 
   const fileType = path ? detectFileType(path.split('/').pop() || '') : 'text';
   const fileName = path?.split('/').pop() || '';
@@ -72,6 +83,7 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
     // Reset
     setContent('');
     setError(null);
+    setImageZoom(1);
 
     // Types that don't need text loading
     if (fileType === 'image' || fileType === 'pdf' || fileType === 'binary') {
@@ -129,8 +141,27 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
 
       case 'image':
         return (
-          <div className="image-viewer-container">
-            <img src={fileUrl} alt={fileName} style={{ maxWidth: '100%', maxHeight: '100%' }} draggable={false} />
+          <div className="image-viewer-wrapper">
+            <div className="image-zoom-controls">
+              <button className="btn btn-sm" onClick={() => setImageZoom(z => Math.max(0.2, z - 0.2))}>
+                <ZoomOut size={16} />
+              </button>
+              <span>{Math.round(imageZoom * 100)}%</span>
+              <button className="btn btn-sm" onClick={() => setImageZoom(z => Math.min(10, z + 0.2))}>
+                <ZoomIn size={16} />
+              </button>
+              {imageZoom !== 1 && (
+                <button className="btn btn-sm" onClick={() => setImageZoom(1)}>Reset</button>
+              )}
+            </div>
+            <div className="image-viewer-container" ref={imageContainerRef}>
+              <img
+                src={fileUrl}
+                alt={fileName}
+                style={{ transform: `scale(${imageZoom})`, transformOrigin: 'center center' }}
+                draggable={false}
+              />
+            </div>
           </div>
         );
 

@@ -5,6 +5,7 @@ import { WebLinksAddon } from 'xterm-addon-web-links';
 import { io, Socket } from 'socket.io-client';
 import 'xterm/css/xterm.css';
 import { api } from '../../api/client';
+import { useSocket } from '../../contexts/SocketContext';
 import { Monitor, Link2, Unlink, Plus, AlertCircle, Terminal as TerminalIcon, FolderOpen } from 'lucide-react';
 
 interface ZellijTerminalProps {
@@ -22,8 +23,20 @@ interface ZellijSession {
 }
 
 // Terminal service URL
-const TERMINAL_SERVICE_URL = import.meta.env.VITE_TERMINAL_URL || 
+const TERMINAL_SERVICE_URL = import.meta.env.VITE_TERMINAL_URL ||
   `${window.location.protocol}//${window.location.hostname}:3001`;
+
+const NERD_FONT_FAMILY = '"JetBrains Mono NF", "JetBrains Mono", "Fira Code", monospace';
+
+/** Wait for the Nerd Font to be loaded before creating the terminal */
+async function waitForFont(): Promise<void> {
+  try {
+    await document.fonts.load(`14px "JetBrains Mono NF"`);
+    await document.fonts.ready;
+  } catch {
+    // Fallback — continue without the Nerd Font
+  }
+}
 
 export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -31,7 +44,7 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
   const fitAddonRef = useRef<FitAddon | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const inputHandlerRef = useRef<{ dispose: () => void } | null>(null);
-  
+
   const [zellijAvailable, setZellijAvailable] = useState<boolean | null>(null);
   const [sessions, setSessions] = useState<ZellijSession[]>([]);
   const [projectSession, setProjectSession] = useState<ZellijSession | null>(null);
@@ -39,6 +52,8 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [terminalReady, setTerminalReady] = useState(false);
+
+  const { socket: appSocket } = useSocket();
 
   // Callback ref to know when terminal container is mounted
   const setTerminalContainer = useCallback((el: HTMLDivElement | null) => {
@@ -48,21 +63,36 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
     }
   }, []);
 
-  // Check Zellij status
+  // Sort sessions by name for stable ordering
+  const sortSessions = (list: ZellijSession[]) =>
+    [...list].sort((a, b) => a.name.localeCompare(b.name));
+
+  // Check Zellij status — 30s poll instead of 5s
   useEffect(() => {
     const checkStatus = async () => {
       try {
         const status = await api.getZellijStatus();
         setZellijAvailable(status.available);
         if (status.available) loadSessions();
-      } catch (err) {
+      } catch {
         setZellijAvailable(false);
       }
     };
     checkStatus();
-    const interval = setInterval(checkStatus, 5000);
+    const interval = setInterval(checkStatus, 30_000);
     return () => clearInterval(interval);
   }, []);
+
+  // Listen for real-time session change events from backend
+  useEffect(() => {
+    if (!appSocket) return;
+    const handleSessionsChanged = () => {
+      loadSessions();
+      if (projectPath) loadProjectSession();
+    };
+    appSocket.on('zellij_sessions_changed', handleSessionsChanged);
+    return () => { appSocket.off('zellij_sessions_changed', handleSessionsChanged); };
+  }, [appSocket, projectPath]);
 
   // Load project session
   useEffect(() => {
@@ -75,9 +105,9 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
   const loadSessions = async () => {
     try {
       const data = await api.getZellijSessions();
-      setSessions(data.sessions || []);
-    } catch (err) {
-      console.error('Failed to load sessions:', err);
+      setSessions(sortSessions(data.sessions || []));
+    } catch {
+      console.error('Failed to load sessions');
     }
   };
 
@@ -86,68 +116,51 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
     try {
       const data = await api.getProjectZellijSession(projectPath);
       setProjectSession(data.found ? data.session : null);
-    } catch (err) {
+    } catch {
       setProjectSession(null);
     }
   };
 
-  // Initialize terminal when container is ready
+  // Initialize terminal when container is ready — wait for font first
   useEffect(() => {
-    console.log(`Init terminal - ready: ${terminalReady}, ref: ${!!terminalRef.current}`);
-    if (!terminalReady || !terminalRef.current) {
-      return;
-    }
-    
-    // Check if already initialized
-    if (xtermRef.current) {
-      console.log('Terminal already exists, skipping creation');
-      return;
-    }
+    if (!terminalReady || !terminalRef.current) return;
+    if (xtermRef.current) return;
 
-    console.log('Creating terminal...');
-    const term = new Terminal({
-      cursorBlink: true,
-      fontSize: 14,
-      fontFamily: '"JetBrains Mono", "Fira Code", "Hack", "DejaVu Sans Mono", "SF Mono", "Monaco", "Menlo", monospace',
-      theme: {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4',
-        cursor: '#d4d4d4',
-        selectionBackground: '#264f78',
-      },
-      allowProposedApi: true,
-    });
+    let cancelled = false;
 
-    const fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-    term.loadAddon(new WebLinksAddon());
-    term.open(terminalRef.current);
-    
-    // Delay fit to ensure container has dimensions
-    setTimeout(() => {
-      fitAddon.fit();
-      console.log(`Terminal fitted: ${term.cols}x${term.rows}`);
-      // Write test to verify rendering
-      term.write('\r\n[Terminal initialized]\r\n');
-    }, 100);
+    (async () => {
+      await waitForFont();
+      if (cancelled || !terminalRef.current) return;
 
-    xtermRef.current = term;
-    fitAddonRef.current = fitAddon;
-    
-    console.log('Terminal created, waiting for fit...');
-    
-    // Debug: check container dimensions
-    setTimeout(() => {
-      const el = terminalRef.current;
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        console.log(`Container size: ${rect.width}x${rect.height}`);
-      }
-    }, 200);
+      const term = new Terminal({
+        cursorBlink: true,
+        fontSize: 14,
+        fontFamily: NERD_FONT_FAMILY,
+        theme: {
+          background: '#1e1e1e',
+          foreground: '#d4d4d4',
+          cursor: '#d4d4d4',
+          selectionBackground: '#264f78',
+        },
+        allowProposedApi: true,
+      });
+
+      const fitAddon = new FitAddon();
+      term.loadAddon(fitAddon);
+      term.loadAddon(new WebLinksAddon());
+      term.open(terminalRef.current);
+
+      setTimeout(() => {
+        fitAddon.fit();
+        term.write('\r\n[Terminal initialized]\r\n');
+      }, 100);
+
+      xtermRef.current = term;
+      fitAddonRef.current = fitAddon;
+    })();
 
     const handleResize = () => {
       fitAddonRef.current?.fit();
-      // Send resize to server if connected
       if (socketRef.current?.connected && xtermRef.current) {
         socketRef.current.emit('resize', {
           cols: xtermRef.current.cols,
@@ -157,43 +170,29 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
     };
     window.addEventListener('resize', handleResize);
 
-    // Handle keyboard events to suppress browser shortcuts when terminal is focused
+    // Suppress browser shortcuts when terminal is focused
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only suppress if terminal is focused
       const target = e.target as HTMLElement;
       if (!target.closest('.xterm-container')) return;
 
-      // Suppress browser shortcuts that should go to terminal
       const suppressKeys = [
-        'KeyT', // Ctrl+T (new tab)
-        'KeyW', // Ctrl+W (close tab)
-        'KeyN', // Ctrl+N (new window)
-        'KeyR', // Ctrl+R (reload)
-        'KeyP', // Ctrl+P (print)
-        'KeyF', // Ctrl+F (find)
-        'KeyG', // Ctrl+G (find next)
-        'KeyH', // Ctrl+H (history)
-        'KeyJ', // Ctrl+J (downloads)
-        'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', // Ctrl+1-9 (switch tabs)
-        'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0',
-        'Tab',  // Ctrl+Tab
+        'KeyT', 'KeyW', 'KeyN', 'KeyR', 'KeyP', 'KeyF', 'KeyG', 'KeyH', 'KeyJ',
+        'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5',
+        'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Tab',
       ];
-
       if (e.ctrlKey && suppressKeys.includes(e.code)) {
         e.preventDefault();
         return false;
       }
-
-      // Suppress Alt+ shortcuts (menu access)
       if (e.altKey) {
         e.preventDefault();
         return false;
       }
     };
-
     document.addEventListener('keydown', handleKeyDown, true);
 
     return () => {
+      cancelled = true;
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('keydown', handleKeyDown, true);
     };
@@ -204,14 +203,12 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
       setError('No project selected');
       return;
     }
-    
+
     setLoading(true);
     setError(null);
-    console.log(`Connecting to terminal service: ${event}`);
 
     disconnect();
 
-    // Connect to Node.js terminal service
     const socket = io(TERMINAL_SERVICE_URL, {
       path: '/terminal-socket',
       transports: ['websocket'],
@@ -221,72 +218,53 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      console.log('Connected to terminal service');
       socket.emit(event, data);
     });
 
-    socket.on('ready', (data) => {
-      console.log(`Terminal ready: ${JSON.stringify(data)}`);
+    socket.on('ready', () => {
       setConnected(true);
       setLoading(false);
-      
-      // Set up terminal input handling
+
       if (inputHandlerRef.current) {
         inputHandlerRef.current.dispose();
       }
-      
-      console.log(`xtermRef exists: ${!!xtermRef.current}`);
+
       if (xtermRef.current) {
-        // Test write to verify terminal is working
-        console.log('Writing test message to terminal...');
-        xtermRef.current.write('\r\n[Terminal connected - waiting for output...]\r\n');
-        
-        // Send initial resize
         socket.emit('resize', {
           cols: xtermRef.current.cols,
           rows: xtermRef.current.rows
         });
-        
-        // Handle input
+
         inputHandlerRef.current = xtermRef.current.onData((inputData) => {
           if (socket.connected) {
             socket.emit('input', inputData);
           }
         });
-        
-        // Focus terminal
+
         xtermRef.current.focus();
       }
     });
-    
-    // Add output debug logging
+
     socket.on('output', (data) => {
-      console.log(`Received ${data.length} chars of output`);
       if (xtermRef.current) {
         xtermRef.current.write(data);
-        // Force render
-        xtermRef.current.refresh(0, xtermRef.current.rows - 1);
       }
     });
 
     socket.on('error', (data) => {
-      console.log(`Error: ${data.message}`);
       setError(data.message);
       setLoading(false);
     });
 
-    socket.on('exit', (data) => {
-      console.log(`Terminal exited: ${JSON.stringify(data)}`);
+    socket.on('exit', () => {
       setConnected(false);
     });
 
-    socket.on('disconnect', (reason) => {
-      console.log(`Disconnected: ${reason}`);
+    socket.on('disconnect', () => {
       setConnected(false);
     });
 
     socket.on('connect_error', (err) => {
-      console.log(`Connect error: ${err.message}`);
       setError(`Cannot connect to terminal service: ${err.message}`);
       setLoading(false);
     });
@@ -297,9 +275,9 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
   };
 
   const connectToSession = (sessionName: string) => {
-    connectToTerminalService('attach_zellij', { 
+    connectToTerminalService('attach_zellij', {
       path: projectPath,
-      session: sessionName 
+      session: sessionName
     });
   };
 
@@ -322,12 +300,15 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
     }
     setLoading(true);
     try {
-      await api.createZellijSession(projectPath, agentType);
+      const result = await api.createZellijSession(projectPath, agentType);
       await loadSessions();
       await loadProjectSession();
+      // Auto-connect to the newly created session
+      if (result.session_name) {
+        connectToSession(result.session_name);
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to create session');
-    } finally {
       setLoading(false);
     }
   };
@@ -354,7 +335,7 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
             <span className="no-session">No zellij session for {projectName}</span>
           )}
         </div>
-        
+
         <div className="zellij-actions">
           <button
             className="btn btn-sm btn-secondary"
@@ -375,14 +356,14 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
               Connect Zellij
             </button>
           )}
-          
+
           {connected && (
             <button className="btn btn-sm" onClick={disconnect}>
               <Unlink size={14} />
               Disconnect
             </button>
           )}
-          
+
           {!projectSession && (
             <button
               className="btn btn-sm btn-primary"
@@ -405,7 +386,7 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
 
       <div className="zellij-terminal-container">
         <div ref={setTerminalContainer} className="xterm-container" />
-        
+
         {!connected && !loading && (
           <div className="zellij-overlay">
             <div className="zellij-setup">
@@ -419,7 +400,7 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
                   <TerminalIcon size={16} />
                   New Terminal
                 </button>
-                
+
                 {projectSession ? (
                   <button
                     className="btn btn-secondary"
@@ -442,7 +423,7 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
             </div>
           </div>
         )}
-        
+
         {loading && (
           <div className="zellij-overlay">
             <div className="loading-spinner">Connecting...</div>

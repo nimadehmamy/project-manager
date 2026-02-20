@@ -918,6 +918,8 @@ def api_zellij_create():
     session_name = manager.create_session(safe_path, agent_type)
     
     if session_name:
+        # Notify all clients so session lists update instantly
+        socketio.emit('zellij_sessions_changed', {'action': 'created', 'session': session_name})
         return jsonify({
             'success': True,
             'session_name': session_name,
