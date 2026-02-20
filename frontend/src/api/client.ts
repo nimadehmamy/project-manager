@@ -53,6 +53,11 @@ class ApiClient {
     return response.data;
   }
 
+  async getTree(path: string) {
+    const response = await this.client.get(`/api/tree?path=${encodeURIComponent(path)}`);
+    return response.data;
+  }
+
   async getFile(path: string, download: boolean = false) {
     const response = await this.client.get(
       `/api/file?path=${encodeURIComponent(path)}&download=${download}`,

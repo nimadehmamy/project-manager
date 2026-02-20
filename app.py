@@ -40,6 +40,7 @@ from config import (
     SECRET_KEY,
 )
 
+from ssh_pool import SSHConnectionPool
 from zellij_manager import get_zellij_manager
 
 # Cache configuration
@@ -78,9 +79,16 @@ except ImportError:
 
 socketio = SocketIO(app, async_mode=async_mode, cors_allowed_origins="*", ping_timeout=60)
 
+# SSH connection pool — reuses connections across API requests
+ssh_pool = SSHConnectionPool(max_idle=3, idle_timeout=300)
+
 
 def get_ssh_client():
-    """Create and return an SSH client connected to remote server."""
+    """Create and return an SSH client connected to remote server.
+
+    NOTE: Only used by terminal/socket handlers that need a dedicated long-lived
+    connection. All API endpoints should use ssh_pool.get_sftp() instead.
+    """
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     client.connect(
@@ -211,33 +219,24 @@ def api_browse():
         return jsonify({'error': 'Access denied - path outside allowed directory'}), 403
 
     try:
-        client = get_ssh_client()
-        sftp = client.open_sftp()
+        with ssh_pool.get_sftp() as sftp:
+            # Verify path exists and is a directory
+            try:
+                stat_info = sftp.stat(safe_path)
+                if not stat.S_ISDIR(stat_info.st_mode):
+                    return jsonify({'error': 'Not a directory'}), 400
+            except FileNotFoundError:
+                return jsonify({'error': 'Directory not found'}), 404
 
-        # Verify path exists and is a directory
-        try:
-            stat_info = sftp.stat(safe_path)
-            if not stat.S_ISDIR(stat_info.st_mode):
-                sftp.close()
-                client.close()
-                return jsonify({'error': 'Not a directory'}), 400
-        except FileNotFoundError:
-            sftp.close()
-            client.close()
-            return jsonify({'error': 'Directory not found'}), 404
+            # List directory contents
+            entries = []
+            for entry in sftp.listdir(safe_path):
+                info = get_file_info(sftp, safe_path, entry)
+                if info:
+                    entries.append(info)
 
-        # List directory contents
-        entries = []
-        for entry in sftp.listdir(safe_path):
-            info = get_file_info(sftp, safe_path, entry)
-            if info:
-                entries.append(info)
-
-        # Sort: directories first, then by name
-        entries.sort(key=lambda x: (not x['is_dir'], x['name'].lower()))
-
-        sftp.close()
-        client.close()
+            # Sort: directories first, then by name
+            entries.sort(key=lambda x: (not x['is_dir'], x['name'].lower()))
 
         # Calculate parent path for navigation
         parent_path = None
@@ -273,33 +272,35 @@ def api_file():
         return jsonify({'error': 'Access denied'}), 403
 
     try:
-        client = get_ssh_client()
-        sftp = client.open_sftp()
+        # File streaming needs a dedicated connection since the SFTP handle
+        # must stay open for the duration of the response.
+        client, sftp = ssh_pool._acquire()
 
         # Verify it's a file, not a directory
         try:
             stat_info = sftp.stat(safe_path)
             if stat.S_ISDIR(stat_info.st_mode):
-                sftp.close()
-                client.close()
+                ssh_pool._release(client, sftp)
                 return jsonify({'error': 'Cannot download a directory'}), 400
         except FileNotFoundError:
-            sftp.close()
-            client.close()
+            ssh_pool._release(client, sftp)
             return jsonify({'error': 'File not found'}), 404
 
         # Stream the file
         filename = os.path.basename(safe_path)
 
         def generate():
-            with sftp.file(safe_path, 'rb') as f:
-                while True:
-                    chunk = f.read(8192)
-                    if not chunk:
-                        break
-                    yield chunk
-            sftp.close()
-            client.close()
+            try:
+                with sftp.file(safe_path, 'rb') as f:
+                    while True:
+                        chunk = f.read(8192)
+                        if not chunk:
+                            break
+                        yield chunk
+                ssh_pool._release(client, sftp)
+            except Exception:
+                ssh_pool._discard(client, sftp)
+                raise
 
         # Guess content type
         content_type = 'application/octet-stream'
@@ -396,20 +397,77 @@ def api_projects():
         return jsonify({'error': 'Access denied'}), 403
     
     try:
-        client = get_ssh_client()
-        sftp = client.open_sftp()
-
-        # Get relative path from ROOT_JAIL
-        rel_path = safe_path.replace(ROOT_JAIL, '')
-        entries = scan_directory(sftp, ROOT_JAIL, rel_path)
-
-        sftp.close()
-        client.close()
+        with ssh_pool.get_sftp() as sftp:
+            # Get relative path from ROOT_JAIL
+            rel_path = safe_path.replace(ROOT_JAIL, '')
+            entries = scan_directory(sftp, ROOT_JAIL, rel_path)
 
         return jsonify({'projects': entries, 'path': path})
 
     except Exception as e:
         app.logger.error(f"Error listing projects: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/tree')
+@require_auth
+def api_tree():
+    """List files and directories in a path (for file tree / sidebar).
+
+    Uses listdir_attr() for a single SFTP call (no per-file stat).
+    Returns has_children flag so the UI can show expand arrows.
+    """
+    path = request.args.get('path', '/')
+    safe_path = sanitize_path(path)
+
+    if safe_path is None:
+        return jsonify({'error': 'Access denied'}), 403
+
+    try:
+        with ssh_pool.get_sftp() as sftp:
+            try:
+                attrs = sftp.listdir_attr(safe_path)
+            except FileNotFoundError:
+                return jsonify({'error': 'Directory not found'}), 404
+
+            entries = []
+            for attr in attrs:
+                name = attr.filename
+                if name.startswith('.'):
+                    continue
+
+                is_dir = stat.S_ISDIR(attr.st_mode)
+                full_path = f"{safe_path}/{name}"
+                rel_path = full_path.replace(ROOT_JAIL, '') or '/'
+                mtime = datetime.fromtimestamp(attr.st_mtime).strftime('%Y-%m-%d %H:%M')
+
+                entry = {
+                    'name': name,
+                    'path': rel_path,
+                    'is_dir': is_dir,
+                    'size': attr.st_size if not is_dir else None,
+                    'modified': mtime,
+                }
+
+                if is_dir:
+                    # Check if directory has children (for expand arrow)
+                    try:
+                        children = sftp.listdir(full_path)
+                        entry['has_children'] = any(
+                            not c.startswith('.') for c in children
+                        )
+                    except Exception:
+                        entry['has_children'] = False
+
+                entries.append(entry)
+
+            # Sort: directories first, then by name
+            entries.sort(key=lambda x: (not x['is_dir'], x['name'].lower()))
+
+        return jsonify({'entries': entries, 'path': path})
+
+    except Exception as e:
+        app.logger.error(f"Error listing tree {path}: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -428,19 +486,13 @@ def api_project_readme():
     readme_path = f"{safe_path}/README.md"
 
     try:
-        client = get_ssh_client()
-        sftp = client.open_sftp()
-
-        try:
-            with sftp.file(readme_path, 'r') as f:
-                content = f.read().decode('utf-8')
-            sftp.close()
-            client.close()
-            return jsonify({'content': content, 'found': True})
-        except FileNotFoundError:
-            sftp.close()
-            client.close()
-            return jsonify({'content': '', 'found': False})
+        with ssh_pool.get_sftp() as sftp:
+            try:
+                with sftp.file(readme_path, 'r') as f:
+                    content = f.read().decode('utf-8')
+                return jsonify({'content': content, 'found': True})
+            except FileNotFoundError:
+                return jsonify({'content': '', 'found': False})
 
     except Exception as e:
         app.logger.error(f"Error reading README: {e}")
@@ -462,19 +514,13 @@ def api_project_todo():
     todo_path = f"{safe_path}/TODO.md"
 
     try:
-        client = get_ssh_client()
-        sftp = client.open_sftp()
-
-        try:
-            with sftp.file(todo_path, 'r') as f:
-                content = f.read().decode('utf-8')
-            sftp.close()
-            client.close()
-            return jsonify({'content': content, 'found': True})
-        except FileNotFoundError:
-            sftp.close()
-            client.close()
-            return jsonify({'content': '', 'found': False})
+        with ssh_pool.get_sftp() as sftp:
+            try:
+                with sftp.file(todo_path, 'r') as f:
+                    content = f.read().decode('utf-8')
+                return jsonify({'content': content, 'found': True})
+            except FileNotFoundError:
+                return jsonify({'content': '', 'found': False})
 
     except Exception as e:
         app.logger.error(f"Error reading TODO: {e}")
@@ -512,45 +558,33 @@ def api_project_progress():
     progress_file = f"{progress_dir}/{PROGRESS_FILE}"
 
     try:
-        client = get_ssh_client()
-        sftp = client.open_sftp()
+        with ssh_pool.get_sftp() as sftp:
+            # Check if .project_manager directory exists
+            try:
+                sftp.stat(progress_dir)
+            except FileNotFoundError:
+                return jsonify({
+                    'found': False,
+                    'dir_exists': False,
+                    'data': DEFAULT_TASKS_STRUCTURE
+                })
 
-        # Check if .project_manager directory exists
-        try:
-            sftp.stat(progress_dir)
-            dir_exists = True
-        except FileNotFoundError:
-            dir_exists = False
-
-        if not dir_exists:
-            sftp.close()
-            client.close()
-            return jsonify({
-                'found': False,
-                'dir_exists': False,
-                'data': DEFAULT_TASKS_STRUCTURE
-            })
-
-        # Check if tasks.yml exists
-        try:
-            with sftp.file(progress_file, 'r') as f:
-                content = f.read().decode('utf-8')
-                data = yaml.safe_load(content) or DEFAULT_TASKS_STRUCTURE
-            sftp.close()
-            client.close()
-            return jsonify({
-                'found': True,
-                'dir_exists': True,
-                'data': data
-            })
-        except FileNotFoundError:
-            sftp.close()
-            client.close()
-            return jsonify({
-                'found': False,
-                'dir_exists': True,
-                'data': DEFAULT_TASKS_STRUCTURE
-            })
+            # Check if tasks.yml exists
+            try:
+                with sftp.file(progress_file, 'r') as f:
+                    content = f.read().decode('utf-8')
+                    data = yaml.safe_load(content) or DEFAULT_TASKS_STRUCTURE
+                return jsonify({
+                    'found': True,
+                    'dir_exists': True,
+                    'data': data
+                })
+            except FileNotFoundError:
+                return jsonify({
+                    'found': False,
+                    'dir_exists': True,
+                    'data': DEFAULT_TASKS_STRUCTURE
+                })
 
     except Exception as e:
         app.logger.error(f"Error reading progress: {e}")
@@ -575,50 +609,71 @@ def api_project_progress_update():
     progress_file = f"{progress_dir}/{PROGRESS_FILE}"
 
     try:
-        client = get_ssh_client()
-        sftp = client.open_sftp()
+        with ssh_pool.get_sftp() as sftp:
+            # Create directory if it doesn't exist
+            try:
+                sftp.mkdir(progress_dir)
+            except IOError:
+                pass  # Directory already exists
 
-        # Create directory if it doesn't exist
-        try:
-            sftp.mkdir(progress_dir)
-        except IOError:
-            pass  # Directory already exists
+            # Write tasks.yml
+            yaml_content = yaml.dump(data, default_flow_style=False,
+                                      allow_unicode=True, sort_keys=False)
 
-        # Write tasks.yml
-        yaml_content = yaml.dump(data, default_flow_style=False, 
-                                  allow_unicode=True, sort_keys=False)
-        
-        with sftp.file(progress_file, 'w') as f:
-            f.write(yaml_content)
-        
-        # Check if README.md and update_task.py exist, if not copy them
-        local_pm_dir = Path(__file__).parent / '.project_manager'
-        
-        # Copy README.md if missing
+            with sftp.file(progress_file, 'w') as f:
+                f.write(yaml_content)
+
+            # Check if README.md and update_task.py exist, if not copy them
+            local_pm_dir = Path(__file__).parent / '.project_manager'
+
+            # Copy README.md if missing
+            try:
+                sftp.stat(f"{progress_dir}/README.md")
+            except FileNotFoundError:
+                readme_local = local_pm_dir / 'README.md'
+                if readme_local.exists():
+                    with open(readme_local, 'r') as f:
+                        readme_content = f.read()
+                    with sftp.file(f"{progress_dir}/README.md", 'w') as f:
+                        f.write(readme_content)
+
+            # Copy update_task.py if missing
+            try:
+                sftp.stat(f"{progress_dir}/update_task.py")
+            except FileNotFoundError:
+                script_local = local_pm_dir / 'update_task.py'
+                if script_local.exists():
+                    with open(script_local, 'r') as f:
+                        script_content = f.read()
+                    with sftp.file(f"{progress_dir}/update_task.py", 'w') as f:
+                        f.write(script_content)
+
+        # Emit real-time update via WebSocket
+        tasks = data.get('tasks', [])
+        total = len(tasks)
+        completed = sum(1 for t in tasks if t.get('status') == 'completed')
+        in_prog = sum(1 for t in tasks if t.get('status') == 'in_progress')
+        progress_pct = round((completed / total * 100), 1) if total > 0 else 0
+
+        socketio.emit('task_update', {
+            'path': project,
+            'name': data.get('project', {}).get('name', ''),
+            'status': data.get('project', {}).get('status', 'active'),
+            'total_tasks': total,
+            'completed': completed,
+            'in_progress': in_prog,
+            'progress': progress_pct,
+            'tasks': tasks[:10],
+            'has_more_tasks': total > 10,
+        })
+
+        # Touch refresh trigger so scanner daemon picks up the change
         try:
-            sftp.stat(f"{progress_dir}/README.md")
-        except FileNotFoundError:
-            readme_local = local_pm_dir / 'README.md'
-            if readme_local.exists():
-                with open(readme_local, 'r') as f:
-                    readme_content = f.read()
-                with sftp.file(f"{progress_dir}/README.md", 'w') as f:
-                    f.write(readme_content)
-        
-        # Copy update_task.py if missing
-        try:
-            sftp.stat(f"{progress_dir}/update_task.py")
-        except FileNotFoundError:
-            script_local = local_pm_dir / 'update_task.py'
-            if script_local.exists():
-                with open(script_local, 'r') as f:
-                    script_content = f.read()
-                with sftp.file(f"{progress_dir}/update_task.py", 'w') as f:
-                    f.write(script_content)
-        
-        sftp.close()
-        client.close()
-        
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            (CACHE_DIR / 'refresh.trigger').touch()
+        except Exception:
+            pass
+
         return jsonify({'success': True, 'message': 'Progress saved'})
 
     except Exception as e:
@@ -644,59 +699,54 @@ def api_project_progress_init():
     progress_file = f"{progress_dir}/{PROGRESS_FILE}"
 
     try:
-        client = get_ssh_client()
-        sftp = client.open_sftp()
+        with ssh_pool.get_sftp() as sftp:
+            # Create .project_manager directory
+            try:
+                sftp.mkdir(progress_dir)
+            except IOError:
+                pass  # Directory already exists
 
-        # Create .project_manager directory
-        try:
-            sftp.mkdir(progress_dir)
-        except IOError:
-            pass  # Directory already exists
+            # Create default tasks.yml
+            default_data = DEFAULT_TASKS_STRUCTURE.copy()
+            default_data['project']['name'] = project_name
+            default_data['tasks'] = [
+                {
+                    'id': '1',
+                    'name': 'Getting started',
+                    'status': 'not_started',
+                    'description': 'Define project goals and initial tasks',
+                    'created': datetime.now().isoformat(),
+                    'subtasks': []
+                }
+            ]
 
-        # Create default tasks.yml
-        default_data = DEFAULT_TASKS_STRUCTURE.copy()
-        default_data['project']['name'] = project_name
-        default_data['tasks'] = [
-            {
-                'id': '1',
-                'name': 'Getting started',
-                'status': 'not_started',
-                'description': 'Define project goals and initial tasks',
-                'created': datetime.now().isoformat(),
-                'subtasks': []
-            }
-        ]
-        
-        yaml_content = yaml.dump(default_data, default_flow_style=False,
-                                  allow_unicode=True, sort_keys=False)
-        
-        with sftp.file(progress_file, 'w') as f:
-            f.write(yaml_content)
-        
-        # Copy README.md and update_task.py from local template
-        local_pm_dir = Path(__file__).parent / '.project_manager'
-        
-        # Copy README.md
-        readme_local = local_pm_dir / 'README.md'
-        if readme_local.exists():
-            with open(readme_local, 'r') as f:
-                readme_content = f.read()
-            with sftp.file(f"{progress_dir}/README.md", 'w') as f:
-                f.write(readme_content)
-        
-        # Copy update_task.py
-        script_local = local_pm_dir / 'update_task.py'
-        if script_local.exists():
-            with open(script_local, 'r') as f:
-                script_content = f.read()
-            with sftp.file(f"{progress_dir}/update_task.py", 'w') as f:
-                f.write(script_content)
-        
-        sftp.close()
-        client.close()
-        
+            yaml_content = yaml.dump(default_data, default_flow_style=False,
+                                      allow_unicode=True, sort_keys=False)
+
+            with sftp.file(progress_file, 'w') as f:
+                f.write(yaml_content)
+
+            # Copy README.md and update_task.py from local template
+            local_pm_dir = Path(__file__).parent / '.project_manager'
+
+            # Copy README.md
+            readme_local = local_pm_dir / 'README.md'
+            if readme_local.exists():
+                with open(readme_local, 'r') as f:
+                    readme_content = f.read()
+                with sftp.file(f"{progress_dir}/README.md", 'w') as f:
+                    f.write(readme_content)
+
+            # Copy update_task.py
+            script_local = local_pm_dir / 'update_task.py'
+            if script_local.exists():
+                with open(script_local, 'r') as f:
+                    script_content = f.read()
+                with sftp.file(f"{progress_dir}/update_task.py", 'w') as f:
+                    f.write(script_content)
+
         return jsonify({
-            'success': True, 
+            'success': True,
             'message': 'Project tracking initialized',
             'data': default_data
         })
@@ -732,19 +782,14 @@ def api_managed_projects():
 def api_stats():
     """Get quick stats about the workspace."""
     try:
-        client = get_ssh_client()
-        sftp = client.open_sftp()
-
-        # Count directories and files
-        stdin, stdout, stderr = client.exec_command(
-            f'find {ROOT_JAIL} -type d | wc -l && '
-            f'find {ROOT_JAIL} -type f | wc -l && '
-            f'du -sh {ROOT_JAIL} | cut -f1'
-        )
-        lines = stdout.read().decode().strip().split('\n')
-
-        sftp.close()
-        client.close()
+        with ssh_pool.get_ssh() as (client, sftp):
+            # Count directories and files
+            stdin, stdout, stderr = client.exec_command(
+                f'find {ROOT_JAIL} -type d | wc -l && '
+                f'find {ROOT_JAIL} -type f | wc -l && '
+                f'du -sh {ROOT_JAIL} | cut -f1'
+            )
+            lines = stdout.read().decode().strip().split('\n')
 
         return jsonify({
             'directories': int(lines[0]) if len(lines) > 0 else 0,

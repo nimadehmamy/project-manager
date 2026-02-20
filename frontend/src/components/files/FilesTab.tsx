@@ -1,50 +1,75 @@
-import { useState, useEffect } from 'react';
-import { Folder, File, ChevronRight, Download, Eye, RefreshCw } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useFiles } from '../../hooks/useProjects';
-import { FileViewerModal } from './FileViewerModal';
-import type { FileEntry } from '../../types';
+import { FileTree } from '../common/FileTree';
+import { FileViewerPanel } from './FileViewerPanel';
+import type { TreeEntry } from '../../hooks/useProjects';
 
 interface FilesTabProps {
   projectPath: string | null;
 }
 
+const TREE_WIDTH_KEY = 'pm-files-tree-width';
+const DEFAULT_TREE_WIDTH = 280;
+const MIN_TREE_WIDTH = 180;
+const MAX_TREE_WIDTH = 500;
+
 export function FilesTab({ projectPath }: FilesTabProps) {
-  const [currentPath, setCurrentPath] = useState(projectPath);
   const [viewingFile, setViewingFile] = useState<string | null>(null);
-  const { data, isLoading, refetch } = useFiles(currentPath);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [treeWidth, setTreeWidth] = useState(() => {
+    const saved = localStorage.getItem(TREE_WIDTH_KEY);
+    return saved ? parseInt(saved, 10) : DEFAULT_TREE_WIDTH;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
-  // Update currentPath when projectPath changes (for persistent tabs)
+  // Reset file selection when project changes
   useEffect(() => {
-    if (projectPath && projectPath !== currentPath) {
-      setCurrentPath(projectPath);
-    }
+    setViewingFile(null);
+    setSelectedPath(null);
   }, [projectPath]);
 
-  const handleRefresh = () => {
-    // Invalidate and refetch files for current path
-    queryClient.invalidateQueries({ queryKey: ['files', currentPath] });
-    refetch();
-  };
+  const handleRefresh = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['tree'] });
+  }, [queryClient]);
 
-  const handleFileClick = (entry: FileEntry) => {
-    if (entry.is_dir) {
-      setCurrentPath(entry.path);
-    } else {
-      // Open in modal
+  const handleTreeSelect = useCallback((entry: TreeEntry) => {
+    setSelectedPath(entry.path);
+    if (!entry.is_dir) {
       setViewingFile(entry.path);
     }
-  };
+  }, []);
 
-  const handleDownload = (e: React.MouseEvent, entry: FileEntry) => {
-    e.stopPropagation();
-    window.open(`/api/file?path=${encodeURIComponent(entry.path)}&download=true`, '_blank');
-  };
+  // Resize handler
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
 
-  const handleBreadcrumbClick = (path: string) => {
-    setCurrentPath(path);
-  };
+    const startX = e.clientX;
+    const startWidth = treeWidth;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = e.clientX - startX;
+      const newWidth = Math.min(MAX_TREE_WIDTH, Math.max(MIN_TREE_WIDTH, startWidth + delta));
+      setTreeWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      // Persist
+      const el = document.querySelector('.files-tree-panel') as HTMLElement;
+      if (el) {
+        localStorage.setItem(TREE_WIDTH_KEY, String(el.offsetWidth));
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [treeWidth]);
 
   if (!projectPath) {
     return (
@@ -54,116 +79,40 @@ export function FilesTab({ projectPath }: FilesTabProps) {
     );
   }
 
-  if (isLoading) {
-    return <div className="loading">Loading files...</div>;
-  }
-
-  const pathParts = currentPath?.split('/').filter(Boolean) || [];
-
   return (
-    <>
-      <div className="file-browser">
-        <div className="breadcrumb">
-          <button onClick={() => handleBreadcrumbClick('/')}>Home</button>
-          {pathParts.map((part, index) => {
-            const path = '/' + pathParts.slice(0, index + 1).join('/');
-            return (
-              <span key={index}>
-                <ChevronRight size={14} />
-                <button onClick={() => handleBreadcrumbClick(path)}>{part}</button>
-              </span>
-            );
-          })}
-          <button 
-            className="refresh-btn" 
-            onClick={handleRefresh} 
-            title="Refresh file list"
-            disabled={isLoading}
+    <div className="files-split-pane" ref={containerRef}>
+      <div className="files-tree-panel" style={{ width: treeWidth }}>
+        <div className="files-tree-header">
+          <span className="files-tree-title">Files</span>
+          <button
+            className="btn-icon"
+            onClick={handleRefresh}
+            title="Refresh file tree"
           >
-            <RefreshCw size={16} className={isLoading ? 'spinning' : ''} />
+            <RefreshCw size={14} />
           </button>
         </div>
-
-        <div className="file-list">
-          <div className="file-list-header">
-            <span>Name</span>
-            <span>Size</span>
-            <span>Modified</span>
-            <span>Actions</span>
-          </div>
-
-          {data?.parent !== undefined && (
-            <div
-              className="file-item"
-              onClick={() => handleBreadcrumbClick(data.parent || '/')}
-            >
-              <span className="file-name">
-                <Folder size={18} />
-                ..
-              </span>
-              <span>-</span>
-              <span>-</span>
-              <span></span>
-            </div>
-          )}
-
-          {data?.entries.map((entry) => (
-            <div
-              key={entry.path}
-              className="file-item"
-              onClick={() => handleFileClick(entry)}
-            >
-              <span className="file-name">
-                {entry.is_dir ? <Folder size={18} /> : <File size={18} />}
-                {entry.name}
-              </span>
-              <span>{entry.size ? formatFileSize(entry.size) : '-'}</span>
-              <span>{entry.modified}</span>
-              <span className="file-actions">
-                {!entry.is_dir && (
-                  <>
-                    <button
-                      className="file-action"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setViewingFile(entry.path);
-                      }}
-                      title="View"
-                    >
-                      <Eye size={16} />
-                    </button>
-                    <button
-                      className="file-action"
-                      onClick={(e) => handleDownload(e, entry)}
-                      title="Download"
-                    >
-                      <Download size={16} />
-                    </button>
-                  </>
-                )}
-              </span>
-            </div>
-          ))}
+        <div className="files-tree-body">
+          <FileTree
+            rootPath={projectPath}
+            showFiles={true}
+            selectedPath={selectedPath}
+            onSelect={handleTreeSelect}
+          />
         </div>
       </div>
 
-      <FileViewerModal 
-        path={viewingFile} 
-        onClose={() => setViewingFile(null)} 
+      <div
+        className={`resize-handle resize-handle-files ${isResizing ? 'resizing' : ''}`}
+        onMouseDown={handleMouseDown}
       />
-    </>
+
+      <div className="file-viewer-container">
+        <FileViewerPanel
+          path={viewingFile}
+          onClose={() => setViewingFile(null)}
+        />
+      </div>
+    </div>
   );
-}
-
-function formatFileSize(bytes: number): string {
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let size = bytes;
-  let unitIndex = 0;
-
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex++;
-  }
-
-  return `${size.toFixed(1)} ${units[unitIndex]}`;
 }

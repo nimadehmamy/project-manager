@@ -66,15 +66,35 @@ Environment variables can override any setting:
 | File | Purpose |
 |------|---------|
 | `app.py` | Main Flask application with API endpoints |
+| `ssh_pool.py` | SSH connection pool — reuses Paramiko connections across requests |
+| `scanner_daemon.py` | Background scanner that caches project data |
 | `config.py` | Configuration loader (reads settings.json + .credentials.py) |
 | `setup.py` | Interactive setup script for first-time configuration |
 | `start-all.sh` | Starts both Flask and Terminal Service |
-| `templates/index.html` | Main dashboard UI |
-| `static/js/app.js` | Frontend JavaScript |
-| `static/css/style.css` | Styling |
 | `terminal-service/server.js` | Node.js terminal service with node-pty |
-| `terminal-service/config.js` | SSH configuration for Beast connection |
+| `frontend/src/api/client.ts` | API client (axios) |
+| `frontend/src/hooks/useProjects.ts` | React Query hooks including useTreeNode |
+| `frontend/src/contexts/SocketContext.tsx` | WebSocket context for real-time updates |
+| `frontend/src/components/common/FileTree.tsx` | Recursive file/dir tree component |
+| `frontend/src/components/files/FilesTab.tsx` | Split-pane file browser (tree + viewer) |
+| `frontend/src/components/files/CodeViewer.tsx` | CodeMirror 6 read-only viewer |
+| `frontend/src/components/files/PdfViewer.tsx` | react-pdf inline viewer |
+| `frontend/src/components/files/FileViewerPanel.tsx` | Inline file viewer panel |
 | `frontend/src/components/terminal/TerminalPanel.tsx` | React terminal component |
+
+## SSH Connection Pool
+
+All API endpoints use the SSH connection pool (`ssh_pool.py`) instead of creating fresh connections:
+- `with ssh_pool.get_sftp() as sftp:` — for SFTP-only operations
+- `with ssh_pool.get_ssh() as (client, sftp):` — when exec_command is also needed
+- Pool maintains up to 3 idle connections with 5-minute timeout
+- Terminal/socket handlers use dedicated connections via `get_ssh_client()`
+
+## Real-Time Updates
+
+- When tasks are saved via `POST /api/project/progress`, the backend emits a `task_update` WebSocket event
+- Frontend `SocketContext` provides a shared socket.io connection
+- `HomeTab` listens for `task_update` events to update project data instantly
 
 ## Environment
 

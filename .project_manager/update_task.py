@@ -42,6 +42,16 @@ def save_tasks(file_path: str, data: dict):
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
 
+def trigger_cache_refresh():
+    """Trigger the scanner daemon to refresh its cache."""
+    trigger_file = Path('/tmp/pm_cache/refresh.trigger')
+    try:
+        trigger_file.touch()
+        print("   (Cache refresh triggered)")
+    except Exception:
+        pass  # Ignore errors, the daemon will refresh on its schedule anyway
+
+
 def find_task(tasks: list, task_id: str) -> tuple:
     """
     Find a task by ID. Returns (task, parent_list, index) or (None, None, -1).
@@ -239,6 +249,7 @@ Examples:
         
         save_tasks(args.file, tasks_data)
         print(f"✅ Added task [{task_id}]: {args.name}")
+        trigger_cache_refresh()
         return
     
     # Update existing task
@@ -260,6 +271,7 @@ Examples:
             print(f"✅ Updated task [{args.task_id}]")
             for key, value in updates.items():
                 print(f"   {key}: {value}")
+            trigger_cache_refresh()
         else:
             print(f"Error: Task {args.task_id} not found")
             sys.exit(1)

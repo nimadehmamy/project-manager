@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ChevronDown, ChevronRight, RefreshCw, Folder, CheckCircle2, Circle, Clock } from 'lucide-react';
 import { api } from '../../api/client';
+import { useSocket } from '../../contexts/SocketContext';
 import type { ManagedProject, Task } from '../../types';
 
 interface HomeTabProps {
@@ -12,6 +13,7 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const { socket } = useSocket();
 
   const fetchProjects = async () => {
     setLoading(true);
@@ -32,6 +34,47 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
     const interval = setInterval(fetchProjects, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Listen for real-time task_update events via WebSocket
+  const handleTaskUpdate = useCallback((data: {
+    path: string;
+    name: string;
+    status: string;
+    total_tasks: number;
+    completed: number;
+    in_progress: number;
+    progress: number;
+    tasks: Task[];
+    has_more_tasks: boolean;
+  }) => {
+    setProjects(prev => {
+      const idx = prev.findIndex(p => p.path === data.path);
+      const updated: ManagedProject = {
+        path: data.path,
+        name: data.name || data.path.split('/').pop() || '',
+        status: (data.status as ManagedProject['status']) || 'active',
+        total_tasks: data.total_tasks,
+        completed: data.completed,
+        in_progress: data.in_progress,
+        progress: data.progress,
+        tasks: data.tasks,
+        has_more_tasks: data.has_more_tasks,
+      };
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = updated;
+        return next;
+      }
+      // New project — add to list
+      return [...prev, updated];
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!socket) return;
+    socket.on('task_update', handleTaskUpdate);
+    return () => { socket.off('task_update', handleTaskUpdate); };
+  }, [socket, handleTaskUpdate]);
 
   const toggleProject = (path: string) => {
     setExpandedProjects(prev => {
@@ -97,8 +140,8 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
         <h2>📊 Project Dashboard</h2>
         <div className="home-stats">
           <span>{projects.length} projects</span>
-          <button 
-            className="refresh-btn" 
+          <button
+            className="refresh-btn"
             onClick={fetchProjects}
             disabled={loading}
             title="Refresh projects"
@@ -123,11 +166,11 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
             const progressColor = getProgressColor(project.progress);
 
             return (
-              <div 
-                key={project.path} 
+              <div
+                key={project.path}
                 className={`project-bar ${isExpanded ? 'expanded' : ''}`}
               >
-                <div 
+                <div
                   className="project-header"
                   onClick={() => toggleProject(project.path)}
                 >
@@ -157,9 +200,9 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
 
                   <div className="project-progress">
                     <div className="progress-bar">
-                      <div 
+                      <div
                         className="progress-fill"
-                        style={{ 
+                        style={{
                           width: `${project.progress}%`,
                           backgroundColor: progressColor
                         }}
@@ -168,7 +211,7 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
                     <span className="progress-text">{project.progress}%</span>
                   </div>
 
-                  <button 
+                  <button
                     className="open-project-btn"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -188,8 +231,8 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
                     ) : (
                       <>
                         {project.tasks.map((task, idx) => (
-                          <div 
-                            key={idx} 
+                          <div
+                            key={idx}
                             className={`task-preview task-${task.status}`}
                           >
                             {getStatusIcon(task.status)}

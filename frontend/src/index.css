@@ -346,6 +346,7 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 24px;
+  position: relative;
 }
 
 .tab-panel {
@@ -2098,4 +2099,250 @@ code[class*="language-"] {
   font-size: 0.875rem;
   color: var(--text-secondary);
   font-style: italic;
+}
+
+/* ========== File Tree ========== */
+.file-tree {
+  padding: 4px 0;
+  user-select: none;
+}
+
+.file-tree-node {
+  margin: 0;
+}
+
+.file-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.1s;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.file-tree-row:hover {
+  background: var(--hover-bg);
+}
+
+.file-tree-row.selected {
+  background: var(--selected-bg);
+}
+
+.file-tree-toggle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+}
+
+.file-tree-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.file-tree-icon.dir-icon {
+  color: var(--folder-color);
+}
+
+.file-tree-icon.file-icon {
+  color: var(--file-color);
+}
+
+.file-tree-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+.file-tree-loading {
+  padding: 8px 16px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.file-tree-error {
+  padding: 16px;
+  font-size: 0.875rem;
+  color: #cf222e;
+  text-align: center;
+}
+
+.file-tree-empty {
+  padding: 16px;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ========== Files Split Pane ========== */
+.files-split-pane {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+  margin: -24px;
+}
+
+.files-tree-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  max-width: 500px;
+  border-right: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  overflow: hidden;
+}
+
+.files-tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.files-tree-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: var(--text-secondary);
+}
+
+.files-tree-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.resize-handle-files {
+  width: 4px;
+  background: transparent;
+  cursor: ew-resize;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.resize-handle-files:hover,
+.resize-handle-files.resizing {
+  background: var(--accent-blue);
+}
+
+.file-viewer-container {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ========== File Viewer Panel (inline) ========== */
+.file-viewer-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--surface);
+}
+
+.file-viewer-panel.empty-viewer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.viewer-breadcrumb {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.breadcrumb-sep {
+  margin: 0 4px;
+  color: var(--text-muted);
+}
+
+.breadcrumb-current {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.breadcrumb-part {
+  color: var(--text-secondary);
+}
+
+.viewer-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.viewer-body {
+  flex: 1;
+  overflow: auto;
+}
+
+/* ========== CodeMirror Viewer ========== */
+.code-viewer-cm {
+  height: 100%;
+  overflow: auto;
+}
+
+.code-viewer-cm .cm-editor {
+  height: 100%;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Monaco, Consolas, monospace;
+  font-size: 0.8125rem;
+}
+
+.code-viewer-cm .cm-editor .cm-scroller {
+  overflow: auto;
+}
+
+.code-viewer-cm .cm-editor.cm-focused {
+  outline: none;
+}
+
+/* Search panel styling */
+.code-viewer-cm .cm-editor .cm-panels {
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.code-viewer-cm .cm-editor .cm-search label {
+  font-size: 0.8125rem;
+}
+
+/* ========== PDF Viewer (inline) ========== */
+.file-viewer-panel .pdf-viewer {
+  padding: 16px;
+  min-height: auto;
+}
+
+.file-viewer-panel .pdf-controls {
+  position: sticky;
+  bottom: 0;
+  margin-top: 12px;
 }

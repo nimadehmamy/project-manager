@@ -252,6 +252,18 @@ def perform_scan():
         print(f"[{datetime.now()}] Scan error: {e}")
 
 
+TRIGGER_FILE = CACHE_DIR / 'refresh.trigger'
+
+def check_trigger():
+    """Check if a refresh trigger file exists."""
+    if TRIGGER_FILE.exists():
+        try:
+            TRIGGER_FILE.unlink()
+            return True
+        except Exception:
+            pass
+    return False
+
 def run_daemon():
     """Run the scanner daemon loop."""
     print(f"Starting Project Manager Scanner Daemon")
@@ -266,9 +278,21 @@ def run_daemon():
     perform_scan()
     
     # Schedule periodic scans
+    elapsed = 0
+    check_interval = 5  # Check for triggers every 5 seconds
     while True:
-        time.sleep(SCAN_INTERVAL)
-        perform_scan()
+        time.sleep(check_interval)
+        elapsed += check_interval
+        
+        # Check for trigger file (immediate refresh request)
+        if check_trigger():
+            print(f"[{datetime.now()}] Triggered refresh requested")
+            perform_scan()
+            elapsed = 0
+        # Regular periodic scan
+        elif elapsed >= SCAN_INTERVAL:
+            perform_scan()
+            elapsed = 0
 
 
 def run_once():

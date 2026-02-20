@@ -69,3 +69,25 @@ export const useInvalidateProgress = () => {
     queryClient.invalidateQueries({ queryKey: ['progress', projectPath] });
   };
 };
+
+export interface TreeEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  size: number | null;
+  modified: string;
+  has_children?: boolean;
+}
+
+export const useTreeNode = (path: string | null) => {
+  return useQuery({
+    queryKey: ['tree', path],
+    queryFn: async () => {
+      if (!path) return [];
+      const data = await api.getTree(path);
+      return data.entries as TreeEntry[];
+    },
+    enabled: !!path,
+    staleTime: 30_000, // 30s before refetch
+  });
+};
