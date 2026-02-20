@@ -89,18 +89,20 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
     });
   };
 
-  const getProgressColor = (progress: number) => {
-    if (progress === 100) return 'var(--accent-green)';
-    if (progress >= 50) return 'var(--accent-blue)';
-    if (progress > 0) return 'var(--folder-color)';
-    return 'var(--text-muted)';
+  // Match Progress tab's segment colors exactly
+  const SEGMENT_COLORS = {
+    completed: 'var(--accent-green)',   // green
+    in_progress: '#3b82f6',             // blue
+    blocked: '#ef4444',                 // red
+    not_started: 'var(--text-muted)',   // gray
   };
 
-  const getProgressBg = (progress: number) => {
-    if (progress === 100) return 'var(--progress-bg-green, rgba(26,127,55,0.08))';
-    if (progress >= 50) return 'var(--progress-bg-blue, rgba(9,105,218,0.06))';
-    if (progress > 0) return 'var(--progress-bg-orange, rgba(245,158,11,0.06))';
-    return 'var(--progress-bg-gray, rgba(140,149,159,0.05))';
+  /** Dominant accent color for the percentage text */
+  const getDominantAccent = (project: ManagedProject) => {
+    if (project.progress === 100) return SEGMENT_COLORS.completed;
+    if (project.in_progress > 0) return SEGMENT_COLORS.in_progress;
+    if (project.completed > 0) return SEGMENT_COLORS.completed;
+    return SEGMENT_COLORS.not_started;
   };
 
   const getStatusIcon = (status: Task['status']) => {
@@ -175,20 +177,32 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
         <div className="home-projects-list">
           {projects.map(project => {
             const isExpanded = expandedProjects.has(project.path);
-            const progressColor = getProgressColor(project.progress);
-            const progressBg = getProgressBg(project.progress);
+            const accent = getDominantAccent(project);
+            const total = project.total_tasks || 1;
+            const completedPct = (project.completed / total) * 100;
+            const inProgressPct = (project.in_progress / total) * 100;
 
             return (
               <div
                 key={project.path}
                 className={`home-project-band ${isExpanded ? 'expanded' : ''}`}
-                style={{ '--progress-accent': progressColor, '--progress-band-bg': progressBg } as React.CSSProperties}
+                style={{ '--progress-accent': accent } as React.CSSProperties}
               >
-                {/* Progress background fill */}
-                <div
-                  className="home-band-fill"
-                  style={{ width: `${project.progress}%`, backgroundColor: progressColor }}
-                />
+                {/* Multi-segment background fill matching Progress tab */}
+                <div className="home-band-fills">
+                  {completedPct > 0 && (
+                    <div
+                      className="home-band-segment"
+                      style={{ width: `${completedPct}%`, backgroundColor: SEGMENT_COLORS.completed }}
+                    />
+                  )}
+                  {inProgressPct > 0 && (
+                    <div
+                      className="home-band-segment"
+                      style={{ width: `${inProgressPct}%`, backgroundColor: SEGMENT_COLORS.in_progress }}
+                    />
+                  )}
+                </div>
 
                 <div
                   className="home-band-content"

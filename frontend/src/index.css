@@ -1944,16 +1944,22 @@ code[class*="language-"] {
   border-color: var(--progress-accent, var(--border));
 }
 
-/* The progress fill behind content */
-.home-band-fill {
+/* Multi-segment progress fills behind content */
+.home-band-fills {
   position: absolute;
   top: 0;
   left: 0;
   bottom: 0;
-  opacity: 0.07;
-  transition: width 0.5s ease;
+  right: 0;
+  display: flex;
   pointer-events: none;
   z-index: 0;
+}
+
+.home-band-segment {
+  height: 100%;
+  opacity: 0.09;
+  transition: width 0.5s ease;
 }
 
 /* Main row content */
