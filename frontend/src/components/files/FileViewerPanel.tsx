@@ -1,11 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Download, FileText, ZoomIn, ZoomOut } from 'lucide-react';
 import { api } from '../../api/client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CodeViewer } from './CodeViewer';
 import { PdfViewer } from './PdfViewer';
-import { usePinchZoom } from '../../hooks/usePinchZoom';
 
 interface FileViewerPanelProps {
   path: string | null;
@@ -49,29 +48,120 @@ function detectFileType(filename: string): FileType {
   if (BINARY_EXTS.has(ext)) return 'binary';
   if (CODE_EXTS.has(ext)) return 'code';
 
-  // Known text filenames without extensions
   if (['makefile', 'dockerfile', 'rakefile', 'gemfile', 'procfile', '.gitignore', '.env'].includes(base)) {
     return 'code';
   }
 
-  // Default to text (will try to load)
   return 'text';
+}
+
+/** Image viewer with pinch-to-zoom and drag-to-pan */
+function ImageViewer({ url, alt }: { url: string; alt: string }) {
+  const [zoom, setZoom] = useState(1);
+  const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+
+  // Drag-to-pan state
+  const dragging = useRef(false);
+  const dragStart = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+
+  const clampZoom = (z: number) => Math.min(10, Math.max(0.1, z));
+
+  // Pinch-to-zoom (trackpad) and Ctrl+scroll
+  const handleWheel = useCallback((e: WheelEvent) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const delta = -e.deltaY * 0.01;
+    setZoom(z => clampZoom(z + delta));
+  }, []);
+
+  // Attach wheel listener with passive:false
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
+
+  // Drag-to-pan handlers
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    const el = containerRef.current;
+    if (!el) return;
+    dragging.current = true;
+    dragStart.current = {
+      x: e.clientX,
+      y: e.clientY,
+      scrollLeft: el.scrollLeft,
+      scrollTop: el.scrollTop,
+    };
+    el.setPointerCapture(e.pointerId);
+  }, []);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const dx = e.clientX - dragStart.current.x;
+    const dy = e.clientY - dragStart.current.y;
+    el.scrollLeft = dragStart.current.scrollLeft - dx;
+    el.scrollTop = dragStart.current.scrollTop - dy;
+  }, []);
+
+  const onPointerUp = useCallback(() => {
+    dragging.current = false;
+  }, []);
+
+  const onImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+  }, []);
+
+  // Compute displayed size: at zoom=1, fit within container
+  // At other zoom levels, scale from the natural size
+  const imgStyle: React.CSSProperties = naturalSize.w > 0
+    ? { width: naturalSize.w * zoom, height: naturalSize.h * zoom }
+    : { maxWidth: '100%', maxHeight: '100%' };
+
+  return (
+    <div className="image-viewer-wrapper">
+      <div className="image-zoom-controls">
+        <button className="btn btn-sm" onClick={() => setZoom(z => clampZoom(z - 0.2))}>
+          <ZoomOut size={16} />
+        </button>
+        <span>{Math.round(zoom * 100)}%</span>
+        <button className="btn btn-sm" onClick={() => setZoom(z => clampZoom(z + 0.2))}>
+          <ZoomIn size={16} />
+        </button>
+        {zoom !== 1 && (
+          <button className="btn btn-sm" onClick={() => setZoom(1)}>Reset</button>
+        )}
+      </div>
+      <div
+        ref={containerRef}
+        className="image-viewer-container"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        <img
+          src={url}
+          alt={alt}
+          style={imgStyle}
+          draggable={false}
+          onLoad={onImageLoad}
+        />
+      </div>
+    </div>
+  );
 }
 
 export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [imageZoom, setImageZoom] = useState(1);
-  const imageZoomRef = useRef(1);
-  imageZoomRef.current = imageZoom;
-
-  const imageContainerRef = usePinchZoom<HTMLDivElement>({
-    min: 0.2,
-    max: 10,
-    getScale: () => imageZoomRef.current,
-    onZoom: setImageZoom,
-  });
 
   const fileType = path ? detectFileType(path.split('/').pop() || '') : 'text';
   const fileName = path?.split('/').pop() || '';
@@ -80,18 +170,14 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
   useEffect(() => {
     if (!path) return;
 
-    // Reset
     setContent('');
     setError(null);
-    setImageZoom(1);
 
-    // Types that don't need text loading
     if (fileType === 'image' || fileType === 'pdf' || fileType === 'binary') {
       setLoading(false);
       return;
     }
 
-    // Load text content
     setLoading(true);
     api.getFile(path, false)
       .then(data => {
@@ -120,7 +206,6 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
     window.open(`${fileUrl}&download=true`, '_blank');
   };
 
-  // Build breadcrumb from path
   const pathParts = path.split('/').filter(Boolean);
 
   const renderContent = () => {
@@ -140,30 +225,7 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
         );
 
       case 'image':
-        return (
-          <div className="image-viewer-wrapper">
-            <div className="image-zoom-controls">
-              <button className="btn btn-sm" onClick={() => setImageZoom(z => Math.max(0.2, z - 0.2))}>
-                <ZoomOut size={16} />
-              </button>
-              <span>{Math.round(imageZoom * 100)}%</span>
-              <button className="btn btn-sm" onClick={() => setImageZoom(z => Math.min(10, z + 0.2))}>
-                <ZoomIn size={16} />
-              </button>
-              {imageZoom !== 1 && (
-                <button className="btn btn-sm" onClick={() => setImageZoom(1)}>Reset</button>
-              )}
-            </div>
-            <div className="image-viewer-container" ref={imageContainerRef}>
-              <img
-                src={fileUrl}
-                alt={fileName}
-                style={{ transform: `scale(${imageZoom})`, transformOrigin: 'center center' }}
-                draggable={false}
-              />
-            </div>
-          </div>
-        );
+        return <ImageViewer url={fileUrl} alt={fileName} />;
 
       case 'pdf':
         return <PdfViewer url={fileUrl} />;

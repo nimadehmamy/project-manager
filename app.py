@@ -303,9 +303,8 @@ def api_file():
                 raise
 
         # Guess content type
-        content_type = 'application/octet-stream'
-        if filename.endswith(('.txt', '.md', '.py', '.js', '.html', '.css', '.json', '.yaml', '.yml')):
-            content_type = 'text/plain'
+        import mimetypes
+        content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
 
         headers = {}
         if download:
