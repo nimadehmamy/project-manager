@@ -1884,15 +1884,19 @@ code[class*="language-"] {
 }
 
 .home-header h2 {
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.home-stats {
+.home-header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+}
+
+.home-project-count {
+  font-size: 0.875rem;
   color: var(--text-secondary);
 }
 
@@ -1919,35 +1923,66 @@ code[class*="language-"] {
   opacity: 0.7;
 }
 
-.projects-list {
+/* ========== Progress Band ========== */
+.home-projects-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
-.project-bar {
+.home-project-band {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
-  transition: box-shadow 0.15s;
+  transition: box-shadow 0.15s, border-color 0.15s;
 }
 
-.project-bar:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+.home-project-band:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border-color: var(--progress-accent, var(--border));
 }
 
-.project-header {
+/* The progress fill behind content */
+.home-band-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  opacity: 0.07;
+  transition: width 0.5s ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Main row content */
+.home-band-content {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px;
+  justify-content: space-between;
+  padding: 20px 20px;
   cursor: pointer;
-  transition: background 0.15s;
+  gap: 16px;
+  min-height: 72px;
 }
 
-.project-header:hover {
-  background: var(--hover-bg);
+.home-band-content:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+[data-theme='dark'] .home-band-content:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.home-band-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
 }
 
 .expand-btn {
@@ -1959,45 +1994,59 @@ code[class*="language-"] {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
-.project-info {
-  flex: 1;
+.home-band-info {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.project-name {
+.home-band-name {
   font-weight: 600;
+  font-size: 1rem;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.project-path {
+.home-band-path {
   font-size: 0.75rem;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-top: 2px;
 }
 
-.project-stats {
+.home-band-right {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-right: 16px;
+  gap: 20px;
+  flex-shrink: 0;
 }
 
-.task-count {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  white-space: nowrap;
+.home-band-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.in-progress-badge {
+.home-band-fraction {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.home-band-sep {
+  color: var(--text-muted);
+  margin: 0 1px;
+}
+
+.home-band-wip {
   font-size: 0.75rem;
   padding: 2px 8px;
   background: var(--selected-bg);
@@ -2006,54 +2055,24 @@ code[class*="language-"] {
   white-space: nowrap;
 }
 
-.project-progress {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 200px;
-  margin-right: 16px;
-}
-
-.progress-bar {
-  flex: 1;
-  height: 8px;
-  background: var(--border);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.progress-text {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  min-width: 40px;
+.home-band-pct {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--progress-accent, var(--text-muted));
+  min-width: 56px;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
-.open-project-btn {
-  padding: 6px 16px;
-  background: var(--primary-color);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s;
+.home-open-btn {
+  flex-shrink: 0;
 }
 
-.open-project-btn:hover {
-  background: var(--primary-hover);
-}
-
-.project-tasks {
-  padding: 0 16px 16px 48px;
+/* Expanded tasks area */
+.home-band-tasks {
+  position: relative;
+  z-index: 1;
+  padding: 0 20px 16px 52px;
   border-top: 1px solid var(--border);
   background: var(--background);
 }

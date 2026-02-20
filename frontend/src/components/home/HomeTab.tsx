@@ -8,6 +8,11 @@ interface HomeTabProps {
   onProjectSelect: (path: string, name: string) => void;
 }
 
+/** Normalize path for comparison — strip leading slash */
+function normPath(p: string): string {
+  return p.replace(/^\/+/, '');
+}
+
 export function HomeTab({ onProjectSelect }: HomeTabProps) {
   const [projects, setProjects] = useState<ManagedProject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +35,6 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
 
   useEffect(() => {
     fetchProjects();
-    // Auto-refresh every 5 minutes
     const interval = setInterval(fetchProjects, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
@@ -48,7 +52,8 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
     has_more_tasks: boolean;
   }) => {
     setProjects(prev => {
-      const idx = prev.findIndex(p => p.path === data.path);
+      const incomingNorm = normPath(data.path);
+      const idx = prev.findIndex(p => normPath(p.path) === incomingNorm);
       const updated: ManagedProject = {
         path: data.path,
         name: data.name || data.path.split('/').pop() || '',
@@ -65,7 +70,6 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
         next[idx] = updated;
         return next;
       }
-      // New project — add to list
       return [...prev, updated];
     });
   }, []);
@@ -79,20 +83,24 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
   const toggleProject = (path: string) => {
     setExpandedProjects(prev => {
       const next = new Set(prev);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
       return next;
     });
   };
 
   const getProgressColor = (progress: number) => {
-    if (progress === 100) return 'var(--accent-green, #22c55e)';
-    if (progress >= 50) return 'var(--accent-blue, #3b82f6)';
-    if (progress > 0) return 'var(--folder-color, #f59e0b)';
-    return 'var(--text-muted, #6b7280)';
+    if (progress === 100) return 'var(--accent-green)';
+    if (progress >= 50) return 'var(--accent-blue)';
+    if (progress > 0) return 'var(--folder-color)';
+    return 'var(--text-muted)';
+  };
+
+  const getProgressBg = (progress: number) => {
+    if (progress === 100) return 'var(--progress-bg-green, rgba(26,127,55,0.08))';
+    if (progress >= 50) return 'var(--progress-bg-blue, rgba(9,105,218,0.06))';
+    if (progress > 0) return 'var(--progress-bg-orange, rgba(245,158,11,0.06))';
+    return 'var(--progress-bg-gray, rgba(140,149,159,0.05))';
   };
 
   const getStatusIcon = (status: Task['status']) => {
@@ -110,10 +118,12 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
     return (
       <div className="home-tab">
         <div className="home-header">
-          <h2>📊 Project Dashboard</h2>
-          <button className="refresh-btn" disabled>
-            <RefreshCw size={18} className="spin" />
-          </button>
+          <h2>Project Dashboard</h2>
+          <div className="progress-actions">
+            <button className="btn btn-secondary" disabled>
+              <RefreshCw size={16} className="spin" />
+            </button>
+          </div>
         </div>
         <div className="home-loading">Loading projects...</div>
       </div>
@@ -124,10 +134,12 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
     return (
       <div className="home-tab">
         <div className="home-header">
-          <h2>📊 Project Dashboard</h2>
-          <button className="refresh-btn" onClick={fetchProjects}>
-            <RefreshCw size={18} />
-          </button>
+          <h2>Project Dashboard</h2>
+          <div className="progress-actions">
+            <button className="btn btn-secondary" onClick={fetchProjects}>
+              <RefreshCw size={16} />
+            </button>
+          </div>
         </div>
         <div className="home-error">{error}</div>
       </div>
@@ -137,16 +149,16 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
   return (
     <div className="home-tab">
       <div className="home-header">
-        <h2>📊 Project Dashboard</h2>
-        <div className="home-stats">
-          <span>{projects.length} projects</span>
+        <h2>Project Dashboard</h2>
+        <div className="home-header-right">
+          <span className="home-project-count">{projects.length} projects</span>
           <button
-            className="refresh-btn"
+            className="btn btn-secondary"
             onClick={fetchProjects}
             disabled={loading}
             title="Refresh projects"
           >
-            <RefreshCw size={18} className={loading ? 'spin' : ''} />
+            <RefreshCw size={16} className={loading ? 'spin' : ''} />
           </button>
         </div>
       </div>
@@ -160,72 +172,65 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
           </p>
         </div>
       ) : (
-        <div className="projects-list">
+        <div className="home-projects-list">
           {projects.map(project => {
             const isExpanded = expandedProjects.has(project.path);
             const progressColor = getProgressColor(project.progress);
+            const progressBg = getProgressBg(project.progress);
 
             return (
               <div
                 key={project.path}
-                className={`project-bar ${isExpanded ? 'expanded' : ''}`}
+                className={`home-project-band ${isExpanded ? 'expanded' : ''}`}
+                style={{ '--progress-accent': progressColor, '--progress-band-bg': progressBg } as React.CSSProperties}
               >
+                {/* Progress background fill */}
                 <div
-                  className="project-header"
+                  className="home-band-fill"
+                  style={{ width: `${project.progress}%`, backgroundColor: progressColor }}
+                />
+
+                <div
+                  className="home-band-content"
                   onClick={() => toggleProject(project.path)}
                 >
-                  <button className="expand-btn">
-                    {isExpanded ? (
-                      <ChevronDown size={20} />
-                    ) : (
-                      <ChevronRight size={20} />
-                    )}
-                  </button>
-
-                  <div className="project-info">
-                    <span className="project-name">{project.name}</span>
-                    <span className="project-path">{project.path}</span>
-                  </div>
-
-                  <div className="project-stats">
-                    <span className="task-count">
-                      {project.completed}/{project.total_tasks} tasks
-                    </span>
-                    {project.in_progress > 0 && (
-                      <span className="in-progress-badge">
-                        {project.in_progress} in progress
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="project-progress">
-                    <div className="progress-bar">
-                      <div
-                        className="progress-fill"
-                        style={{
-                          width: `${project.progress}%`,
-                          backgroundColor: progressColor
-                        }}
-                      />
+                  <div className="home-band-left">
+                    <button className="expand-btn">
+                      {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                    </button>
+                    <div className="home-band-info">
+                      <span className="home-band-name">{project.name}</span>
+                      <span className="home-band-path">{project.path}</span>
                     </div>
-                    <span className="progress-text">{project.progress}%</span>
                   </div>
 
-                  <button
-                    className="open-project-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // Ensure path starts with / for consistency
-                      const fullPath = project.path.startsWith('/') ? project.path : '/' + project.path;
-                      onProjectSelect(fullPath, project.name);
-                    }}
-                  >
-                    Open
-                  </button>
+                  <div className="home-band-right">
+                    <div className="home-band-stats">
+                      <span className="home-band-fraction">
+                        {project.completed}<span className="home-band-sep">/</span>{project.total_tasks}
+                      </span>
+                      {project.in_progress > 0 && (
+                        <span className="home-band-wip">
+                          {project.in_progress} active
+                        </span>
+                      )}
+                    </div>
+                    <span className="home-band-pct">{Math.round(project.progress)}%</span>
+                    <button
+                      className="btn btn-sm btn-secondary home-open-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const fullPath = project.path.startsWith('/') ? project.path : '/' + project.path;
+                        onProjectSelect(fullPath, project.name);
+                      }}
+                    >
+                      Open
+                    </button>
+                  </div>
                 </div>
 
                 {isExpanded && (
-                  <div className="project-tasks">
+                  <div className="home-band-tasks">
                     {project.tasks.length === 0 ? (
                       <div className="no-tasks">No tasks yet</div>
                     ) : (

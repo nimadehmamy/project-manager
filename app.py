@@ -655,8 +655,11 @@ def api_project_progress_update():
         in_prog = sum(1 for t in tasks if t.get('status') == 'in_progress')
         progress_pct = round((completed / total * 100), 1) if total > 0 else 0
 
+        # Normalize path to match scanner cache format (no leading slash)
+        emit_path = project.lstrip('/')
+
         socketio.emit('task_update', {
-            'path': project,
+            'path': emit_path,
             'name': data.get('project', {}).get('name', ''),
             'status': data.get('project', {}).get('status', 'active'),
             'total_tasks': total,
