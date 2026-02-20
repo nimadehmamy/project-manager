@@ -165,8 +165,9 @@ def scan_managed_projects(sftp, root_path):
                     total = len(tasks)
                     completed = sum(1 for t in tasks if t.get('status') == 'completed')
                     in_progress = sum(1 for t in tasks if t.get('status') == 'in_progress')
+                    blocked = sum(1 for t in tasks if t.get('status') == 'blocked')
                     progress = (completed / total * 100) if total > 0 else 0
-                    
+
                     projects.append({
                         'path': rel_path,
                         'name': data.get('project', {}).get('name', project_name),
@@ -174,6 +175,7 @@ def scan_managed_projects(sftp, root_path):
                         'total_tasks': total,
                         'completed': completed,
                         'in_progress': in_progress,
+                        'blocked': blocked,
                         'progress': round(progress, 1),
                         'tasks': tasks[:10] if tasks else [],
                         'has_more_tasks': len(tasks) > 10,
@@ -187,6 +189,7 @@ def scan_managed_projects(sftp, root_path):
                         'total_tasks': 0,
                         'completed': 0,
                         'in_progress': 0,
+                        'blocked': 0,
                         'progress': 0,
                         'tasks': [],
                         'has_more_tasks': False,

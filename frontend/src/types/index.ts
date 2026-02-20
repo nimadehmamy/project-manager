@@ -49,6 +49,7 @@ export interface ManagedProject {
   total_tasks: number;
   completed: number;
   in_progress: number;
+  blocked: number;
   progress: number;
   tasks: Task[];
   has_more_tasks: boolean;

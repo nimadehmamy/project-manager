@@ -47,6 +47,7 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
     total_tasks: number;
     completed: number;
     in_progress: number;
+    blocked: number;
     progress: number;
     tasks: Task[];
     has_more_tasks: boolean;
@@ -61,6 +62,7 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
         total_tasks: data.total_tasks,
         completed: data.completed,
         in_progress: data.in_progress,
+        blocked: data.blocked || 0,
         progress: data.progress,
         tasks: data.tasks,
         has_more_tasks: data.has_more_tasks,
@@ -100,6 +102,7 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
   /** Dominant accent color for the percentage text */
   const getDominantAccent = (project: ManagedProject) => {
     if (project.progress === 100) return SEGMENT_COLORS.completed;
+    if ((project.blocked || 0) > 0) return SEGMENT_COLORS.blocked;
     if (project.in_progress > 0) return SEGMENT_COLORS.in_progress;
     if (project.completed > 0) return SEGMENT_COLORS.completed;
     return SEGMENT_COLORS.not_started;
@@ -181,6 +184,7 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
             const total = project.total_tasks || 1;
             const completedPct = (project.completed / total) * 100;
             const inProgressPct = (project.in_progress / total) * 100;
+            const blockedPct = ((project.blocked || 0) / total) * 100;
 
             return (
               <div
@@ -200,6 +204,12 @@ export function HomeTab({ onProjectSelect }: HomeTabProps) {
                     <div
                       className="home-band-segment"
                       style={{ width: `${inProgressPct}%`, backgroundColor: SEGMENT_COLORS.in_progress }}
+                    />
+                  )}
+                  {blockedPct > 0 && (
+                    <div
+                      className="home-band-segment"
+                      style={{ width: `${blockedPct}%`, backgroundColor: SEGMENT_COLORS.blocked }}
                     />
                   )}
                 </div>

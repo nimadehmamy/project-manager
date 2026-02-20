@@ -653,6 +653,7 @@ def api_project_progress_update():
         total = len(tasks)
         completed = sum(1 for t in tasks if t.get('status') == 'completed')
         in_prog = sum(1 for t in tasks if t.get('status') == 'in_progress')
+        blocked = sum(1 for t in tasks if t.get('status') == 'blocked')
         progress_pct = round((completed / total * 100), 1) if total > 0 else 0
 
         # Normalize path to match scanner cache format (no leading slash)
@@ -665,6 +666,7 @@ def api_project_progress_update():
             'total_tasks': total,
             'completed': completed,
             'in_progress': in_prog,
+            'blocked': blocked,
             'progress': progress_pct,
             'tasks': tasks[:10],
             'has_more_tasks': total > 10,
