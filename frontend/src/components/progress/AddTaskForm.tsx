@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { Plus, X } from 'lucide-react';
 import type { Task } from '../../types';
 
 interface AddTaskFormProps {
@@ -9,51 +10,55 @@ interface AddTaskFormProps {
 
 export function AddTaskForm({ onSubmit, onCancel, isSubtask }: AddTaskFormProps) {
   const [name, setName] = useState('');
-  const [status, setStatus] = useState<Task['status']>('not_started');
-  const [description, setDescription] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const handleSubmit = () => {
     if (name.trim()) {
-      onSubmit(name.trim(), status, description.trim());
+      onSubmit(name.trim(), 'not_started', '');
+      setName('');
+      inputRef.current?.focus();
     }
   };
 
   return (
-    <form className="add-task-form" onSubmit={handleSubmit}>
-      <h4>{isSubtask ? 'Add Subtask' : 'Add New Task'}</h4>
-      <div className="form-row">
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Task name..."
-          style={{ flex: 2 }}
-          autoFocus
-        />
-        <select value={status} onChange={(e) => setStatus(e.target.value as Task['status'])}>
-          <option value="not_started">Not Started</option>
-          <option value="in_progress">In Progress</option>
-          <option value="completed">Completed</option>
-          <option value="blocked">Blocked</option>
-        </select>
+    <div className="add-task-inline">
+      <div className="add-task-inline-icon">
+        <Plus size={16} />
       </div>
-      <div className="form-row">
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Description (optional)..."
-          rows={2}
-        />
-      </div>
-      <div className="form-row" style={{ justifyContent: 'flex-end' }}>
-        <button type="button" className="btn" onClick={onCancel}>
-          Cancel
-        </button>
-        <button type="submit" className="btn btn-primary">
-          Add
-        </button>
-      </div>
-    </form>
+      <input
+        ref={inputRef}
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder={isSubtask ? 'New subtask...' : 'New task...'}
+        className="add-task-inline-input"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            handleSubmit();
+          } else if (e.key === 'Escape') {
+            onCancel();
+          }
+        }}
+      />
+      <button
+        className="btn btn-sm btn-primary add-task-inline-btn"
+        onClick={handleSubmit}
+        disabled={!name.trim()}
+      >
+        Add
+      </button>
+      <button
+        className="add-task-inline-close"
+        onClick={onCancel}
+        title="Cancel"
+      >
+        <X size={14} />
+      </button>
+    </div>
   );
 }

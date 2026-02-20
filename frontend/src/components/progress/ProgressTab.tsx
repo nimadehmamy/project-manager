@@ -5,7 +5,6 @@ import { api } from '../../api/client';
 import { ProgressHeader } from './ProgressHeader';
 import { ProgressStats } from './ProgressStats';
 import { TaskList } from './TaskList';
-import { AddTaskForm } from './AddTaskForm';
 import type { Task } from '../../types';
 
 interface ProgressTabProps {
@@ -247,18 +246,7 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
       />
       
       <ProgressStats tasks={displayTasks} />
-      
-      {isAdding && (
-        <AddTaskForm
-          onSubmit={handleAddTask}
-          onCancel={() => {
-            setIsAdding(false);
-            setAddingToId(null);
-          }}
-          isSubtask={!!addingToId}
-        />
-      )}
-      
+
       <TaskList
         tasks={localTasks}
         onUpdate={handleUpdateTask}
@@ -268,6 +256,13 @@ export function ProgressTab({ projectPath, projectName }: ProgressTabProps) {
           setIsAdding(true);
         }}
         onReorder={handleReorder}
+        isAdding={isAdding}
+        addingToId={addingToId}
+        onAddTask={handleAddTask}
+        onCancelAdd={() => {
+          setIsAdding(false);
+          setAddingToId(null);
+        }}
       />
     </div>
   );
