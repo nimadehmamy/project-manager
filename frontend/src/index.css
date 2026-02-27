@@ -2577,3 +2577,84 @@ code[class*="language-"] {
   text-align: center;
   color: var(--text-muted);
 }
+
+/* ========== Editor Mode ========== */
+.btn-save {
+  color: var(--text-muted);
+  transition: color 0.15s;
+}
+
+.btn-save.dirty {
+  color: var(--accent-green);
+}
+
+.btn-save.dirty:hover {
+  background: rgba(26, 127, 55, 0.1);
+}
+
+.btn-save:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.unsaved-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--accent-blue);
+  border-radius: 50%;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.save-error {
+  display: flex;
+  align-items: center;
+  padding: 6px 16px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 0.8125rem;
+  border-bottom: 1px solid #fca5a5;
+  flex-shrink: 0;
+}
+
+[data-theme='dark'] .save-error {
+  background: #5a1d1d;
+  color: #f48771;
+  border-bottom-color: #7f2d2d;
+}
+
+.vscode-toast {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  padding: 4px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+  animation: fadeIn 0.15s ease-in-out;
+}
+
+/* Autocomplete popup — match One Dark */
+.code-viewer-cm .cm-tooltip-autocomplete {
+  background: #21252b;
+  border: 1px solid #3e4451;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.code-viewer-cm .cm-tooltip-autocomplete ul li {
+  color: #abb2bf;
+  font-size: 0.8125rem;
+}
+
+.code-viewer-cm .cm-tooltip-autocomplete ul li[aria-selected] {
+  background: #2c313a;
+  color: #e5c07b;
+}

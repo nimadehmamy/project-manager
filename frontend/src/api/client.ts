@@ -66,6 +66,11 @@ class ApiClient {
     return response.data;
   }
 
+  async saveFile(path: string, content: string) {
+    const response = await this.client.put('/api/file', { path, content });
+    return response.data;
+  }
+
   // Project Content
   async getReadme(project: string) {
     const response = await this.client.get(`/api/project/readme?project=${encodeURIComponent(project)}`);

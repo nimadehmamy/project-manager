@@ -321,6 +321,44 @@ def api_file():
         return jsonify({'error': f'Failed to read file: {str(e)}'}), 500
 
 
+@app.route('/api/file', methods=['PUT'])
+@require_auth
+def api_file_save():
+    """Save content to an existing file."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    path = data.get('path', '')
+    content = data.get('content', '')
+
+    if not path:
+        return jsonify({'error': 'No file path specified'}), 400
+
+    safe_path = sanitize_path(path)
+    if safe_path is None:
+        return jsonify({'error': 'Access denied'}), 403
+
+    try:
+        with ssh_pool.get_sftp() as sftp:
+            # Verify file exists (no creating new files)
+            try:
+                stat_info = sftp.stat(safe_path)
+                if stat.S_ISDIR(stat_info.st_mode):
+                    return jsonify({'error': 'Cannot write to a directory'}), 400
+            except FileNotFoundError:
+                return jsonify({'error': 'File not found'}), 404
+
+            with sftp.file(safe_path, 'w') as f:
+                f.write(content)
+
+        return jsonify({'success': True, 'message': 'File saved'})
+
+    except Exception as e:
+        app.logger.error(f"Error saving file {path}: {e}")
+        return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
+
+
 def scan_directory(sftp, base_path, rel_path=""):
     """Recursively scan a directory for subdirectories."""
     entries = []

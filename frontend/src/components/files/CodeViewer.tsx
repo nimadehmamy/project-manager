@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { foldGutter, indentOnInput, syntaxHighlighting, defaultHighlightStyle, bracketMatching, StreamLanguage } from '@codemirror/language';
 import { searchKeymap, highlightSelectionMatches, openSearchPanel } from '@codemirror/search';
+import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
 import { oneDark } from '@codemirror/theme-one-dark';
 
 // Native CodeMirror 6 languages
@@ -82,17 +83,19 @@ interface CodeViewerProps {
   content: string;
   filename: string;
   darkMode?: boolean;
+  readOnly?: boolean;
+  onContentChange?: (content: string) => void;
 }
 
-export function CodeViewer({ content, filename, darkMode = true }: CodeViewerProps) {
+export function CodeViewer({ content, filename, darkMode = true, readOnly = true, onContentChange }: CodeViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
 
+  // Create/recreate editor when filename, readOnly, or darkMode changes
   useEffect(() => {
     if (!containerRef.current) return;
 
     const ext = filename.split('.').pop()?.toLowerCase() || '';
-    // Also check the full filename for things like "Dockerfile"
     const base = filename.toLowerCase();
     const langFn = LANG_MAP[ext] || LANG_MAP[base];
 
@@ -105,11 +108,34 @@ export function CodeViewer({ content, filename, darkMode = true }: CodeViewerPro
       highlightSelectionMatches(),
       foldGutter(),
       history(),
-      keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
-      EditorState.readOnly.of(true),
-      EditorView.editable.of(false),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     ];
+
+    if (readOnly) {
+      extensions.push(
+        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+        EditorState.readOnly.of(true),
+        EditorView.editable.of(false),
+      );
+    } else {
+      extensions.push(
+        keymap.of([
+          ...closeBracketsKeymap,
+          ...completionKeymap,
+          ...defaultKeymap,
+          ...historyKeymap,
+          ...searchKeymap,
+          indentWithTab,
+        ]),
+        closeBrackets(),
+        autocompletion(),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged && onContentChange) {
+            onContentChange(update.state.doc.toString());
+          }
+        }),
+      );
+    }
 
     if (darkMode) {
       extensions.push(oneDark);
@@ -135,7 +161,20 @@ export function CodeViewer({ content, filename, darkMode = true }: CodeViewerPro
       view.destroy();
       viewRef.current = null;
     };
-  }, [content, filename, darkMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filename, readOnly, darkMode]);
+
+  // Push content updates in read-only mode without recreating editor
+  useEffect(() => {
+    if (!readOnly || !viewRef.current) return;
+    const view = viewRef.current;
+    const currentDoc = view.state.doc.toString();
+    if (currentDoc !== content) {
+      view.dispatch({
+        changes: { from: 0, to: currentDoc.length, insert: content },
+      });
+    }
+  }, [content, readOnly]);
 
   // Expose Ctrl+F to open search panel
   useEffect(() => {

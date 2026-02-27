@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Download, FileText, ZoomIn, ZoomOut } from 'lucide-react';
+import { X, Download, FileText, ZoomIn, ZoomOut, Edit3, Eye, Save, Loader2, ExternalLink } from 'lucide-react';
 import { api } from '../../api/client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -37,6 +37,8 @@ const BINARY_EXTS = new Set([
   'o', 'a', 'lib', 'class', 'jar', 'war', 'pyc', 'pyo',
   'db', 'sqlite', 'sqlite3',
 ]);
+
+const EDITABLE_TYPES = new Set(['code', 'text', 'markdown', 'csv']);
 
 type FileType = 'code' | 'markdown' | 'image' | 'pdf' | 'csv' | 'notebook' | 'text' | 'binary';
 
@@ -159,9 +161,27 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [vsCodeToast, setVsCodeToast] = useState(false);
+
   const fileType = path ? detectFileType(path.split('/').pop() || '') : 'text';
   const fileName = path?.split('/').pop() || '';
   const fileUrl = path ? `/api/file?path=${encodeURIComponent(path)}` : '';
+  const isEditable = EDITABLE_TYPES.has(fileType);
+
+  // Reset edit state when file path changes
+  useEffect(() => {
+    setIsEditing(false);
+    setEditContent('');
+    setIsDirty(false);
+    setIsSaving(false);
+    setSaveError(null);
+  }, [path]);
 
   useEffect(() => {
     if (!path) return;
@@ -187,6 +207,66 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
       });
   }, [path, fileType]);
 
+  // Ctrl+S to save
+  useEffect(() => {
+    if (!isEditing) return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing, editContent, path]);
+
+  const handleSave = async () => {
+    if (!path || !isDirty || isSaving) return;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await api.saveFile(path, editContent);
+      setContent(editContent);
+      setIsDirty(false);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || 'Failed to save file';
+      setSaveError(msg);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const enterEditMode = () => {
+    setEditContent(content);
+    setIsDirty(false);
+    setSaveError(null);
+    setIsEditing(true);
+  };
+
+  const exitEditMode = () => {
+    if (isDirty && !window.confirm('You have unsaved changes. Discard them?')) {
+      return;
+    }
+    setIsEditing(false);
+    setEditContent('');
+    setIsDirty(false);
+    setSaveError(null);
+  };
+
+  const handleEditContentChange = (newContent: string) => {
+    setEditContent(newContent);
+    setIsDirty(newContent !== content);
+  };
+
+  const handleOpenVSCode = () => {
+    const filePath = path || '';
+    const url = `http://localhost:8888/?folder=/home/nima&goto=${encodeURIComponent(filePath)}`;
+    window.open(url, '_blank');
+    setVsCodeToast(true);
+    setTimeout(() => setVsCodeToast(false), 3000);
+  };
+
   if (!path) {
     return (
       <div className="file-viewer-panel empty-viewer">
@@ -207,6 +287,18 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
   const renderContent = () => {
     if (loading) return <div className="loading">Loading...</div>;
     if (error) return <div className="error">{error}</div>;
+
+    // Edit mode: render raw text in CodeViewer for all editable types
+    if (isEditing) {
+      return (
+        <CodeViewer
+          content={editContent}
+          filename={fileName}
+          readOnly={false}
+          onContentChange={handleEditContentChange}
+        />
+      );
+    }
 
     switch (fileType) {
       case 'code':
@@ -258,8 +350,39 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
               </span>
             </span>
           ))}
+          {isDirty && <span className="unsaved-dot" title="Unsaved changes" />}
         </div>
         <div className="viewer-actions">
+          {isEditable && !isEditing && (
+            <button className="btn-icon" onClick={enterEditMode} title="Edit file">
+              <Edit3 size={18} />
+            </button>
+          )}
+          {isEditing && (
+            <>
+              <button
+                className={`btn-icon btn-save ${isDirty ? 'dirty' : ''}`}
+                onClick={handleSave}
+                disabled={!isDirty || isSaving}
+                title={isDirty ? 'Save (Ctrl+S)' : 'No changes to save'}
+              >
+                {isSaving ? <Loader2 size={18} className="spin" /> : <Save size={18} />}
+              </button>
+              <button className="btn-icon" onClick={exitEditMode} title="Back to viewer">
+                <Eye size={18} />
+              </button>
+            </>
+          )}
+          {isEditable && (
+            <div style={{ position: 'relative' }}>
+              <button className="btn-icon" onClick={handleOpenVSCode} title="Open in VS Code">
+                <ExternalLink size={18} />
+              </button>
+              {vsCodeToast && (
+                <div className="vscode-toast">Opening VS Code...</div>
+              )}
+            </div>
+          )}
           <button className="btn-icon" onClick={handleDownload} title="Download">
             <Download size={18} />
           </button>
@@ -268,6 +391,14 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
           </button>
         </div>
       </div>
+      {saveError && (
+        <div className="save-error">
+          Save failed: {saveError}
+          <button className="btn-icon" onClick={() => setSaveError(null)} style={{ marginLeft: 'auto' }}>
+            <X size={14} />
+          </button>
+        </div>
+      )}
       <div className="viewer-body">
         {renderContent()}
       </div>
