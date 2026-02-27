@@ -809,21 +809,20 @@ def api_stats():
 @app.route('/api/zellij/status')
 @require_auth
 def api_zellij_status():
-    """Check if Zellij is available."""
+    """Check if a terminal multiplexer (Zellij or tmux) is available."""
     manager = get_zellij_manager()
-    return jsonify({
-        'available': manager.is_zellij_available()
-    })
+    status = manager.is_available()
+    return jsonify(status)
 
 
 @app.route('/api/zellij/sessions')
 @require_auth
 def api_zellij_sessions():
-    """List all Zellij sessions."""
+    """List all terminal multiplexer sessions."""
     manager = get_zellij_manager()
-    
+
     if not manager.is_zellij_available():
-        return jsonify({'error': 'Zellij is not installed or not in PATH'}), 503
+        return jsonify({'error': 'No terminal multiplexer available'}), 503
     
     sessions = manager.list_sessions()
     return jsonify({

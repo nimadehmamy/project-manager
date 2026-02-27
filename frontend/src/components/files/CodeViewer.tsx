@@ -2,11 +2,11 @@ import { useEffect, useRef } from 'react';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { foldGutter, indentOnInput, syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language';
+import { foldGutter, indentOnInput, syntaxHighlighting, defaultHighlightStyle, bracketMatching, StreamLanguage } from '@codemirror/language';
 import { searchKeymap, highlightSelectionMatches, openSearchPanel } from '@codemirror/search';
 import { oneDark } from '@codemirror/theme-one-dark';
 
-// Language imports — loaded statically for simplicity; tree-shaking keeps bundle small
+// Native CodeMirror 6 languages
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
 import { css } from '@codemirror/lang-css';
@@ -18,7 +18,19 @@ import { java } from '@codemirror/lang-java';
 import { rust } from '@codemirror/lang-rust';
 import { go } from '@codemirror/lang-go';
 
-const LANG_MAP: Record<string, () => ReturnType<typeof javascript>> = {
+// Legacy modes for additional languages
+import { stex } from '@codemirror/legacy-modes/mode/stex';
+import { yaml } from '@codemirror/legacy-modes/mode/yaml';
+import { toml } from '@codemirror/legacy-modes/mode/toml';
+import { shell } from '@codemirror/legacy-modes/mode/shell';
+import { lua } from '@codemirror/legacy-modes/mode/lua';
+import { r } from '@codemirror/legacy-modes/mode/r';
+import { sql as sqlMode } from '@codemirror/legacy-modes/mode/sql';
+import { dockerFile } from '@codemirror/legacy-modes/mode/dockerfile';
+import { diff } from '@codemirror/legacy-modes/mode/diff';
+
+const LANG_MAP: Record<string, () => any> = {
+  // Native CM6 languages
   js: () => javascript(),
   jsx: () => javascript({ jsx: true }),
   ts: () => javascript({ typescript: true }),
@@ -35,7 +47,7 @@ const LANG_MAP: Record<string, () => ReturnType<typeof javascript>> = {
   html: () => html(),
   htm: () => html(),
   xml: () => html(),
-  svg: () => html(),  // SVG viewed as text
+  svg: () => html(),
   c: () => cpp(),
   cpp: () => cpp(),
   h: () => cpp(),
@@ -45,6 +57,25 @@ const LANG_MAP: Record<string, () => ReturnType<typeof javascript>> = {
   java: () => java(),
   rs: () => rust(),
   go: () => go(),
+  // Legacy modes (via StreamLanguage)
+  tex: () => StreamLanguage.define(stex),
+  sty: () => StreamLanguage.define(stex),
+  cls: () => StreamLanguage.define(stex),
+  bib: () => StreamLanguage.define(stex),
+  bst: () => StreamLanguage.define(stex),
+  yaml: () => StreamLanguage.define(yaml),
+  yml: () => StreamLanguage.define(yaml),
+  toml: () => StreamLanguage.define(toml),
+  sh: () => StreamLanguage.define(shell),
+  bash: () => StreamLanguage.define(shell),
+  zsh: () => StreamLanguage.define(shell),
+  fish: () => StreamLanguage.define(shell),
+  lua: () => StreamLanguage.define(lua),
+  r: () => StreamLanguage.define(r),
+  sql: () => StreamLanguage.define(sqlMode({})),
+  dockerfile: () => StreamLanguage.define(dockerFile),
+  diff: () => StreamLanguage.define(diff),
+  patch: () => StreamLanguage.define(diff),
 };
 
 interface CodeViewerProps {
@@ -60,9 +91,10 @@ export function CodeViewer({ content, filename, darkMode = true }: CodeViewerPro
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Determine language extension from filename
     const ext = filename.split('.').pop()?.toLowerCase() || '';
-    const langFn = LANG_MAP[ext];
+    // Also check the full filename for things like "Dockerfile"
+    const base = filename.toLowerCase();
+    const langFn = LANG_MAP[ext] || LANG_MAP[base];
 
     const extensions = [
       lineNumbers(),

@@ -237,6 +237,60 @@ source venv/bin/activate && python app.py
 4. **Mouse tracking in terminal**: Zellij enables mouse tracking by default. If hovering writes characters to the terminal, this is Zellij's mouse mode. To disable it in Zellij: press `Ctrl+G` → Options → uncheck "Enable Mouse Mode"
 5. **Powerline fonts not showing**: The terminal uses Nerd Fonts for special characters. These must be installed on the machine running the browser (your laptop), not the server. The browser loads these fonts to render the terminal.
 
+## TODO Task Tracking
+
+The project's TODO list is maintained on Beast at:
+```
+{ROOT_JAIL}/TODO/.project_manager/tasks.yml
+```
+Where `ROOT_JAIL` is the remote working directory defined in `config.py` (loaded from `settings.json`'s `remote_path`).
+
+**Always check this file at the start of a session** to see the latest priorities, and update task statuses as you work.
+
+### Reading Tasks
+
+Use the SSH connection pool to fetch the tasks file from Beast:
+```python
+from config import ROOT_JAIL
+from ssh_pool import ssh_pool
+
+with ssh_pool.get_sftp() as sftp:
+    with sftp.open(f"{ROOT_JAIL}/TODO/.project_manager/tasks.yml") as f:
+        tasks_yml = f.read().decode()
+```
+
+### Updating Tasks
+
+Use the `update_task.py` script located at `{ROOT_JAIL}/TODO/.project_manager/update_task.py` on Beast:
+```bash
+# Via SSH on Beast:
+cd {ROOT_JAIL}/TODO/.project_manager
+
+# List all tasks
+python3 update_task.py -f tasks.yml --list
+
+# Mark a task as in progress
+python3 update_task.py -f tasks.yml --task-id <id> --status in_progress
+
+# Mark a task as completed
+python3 update_task.py -f tasks.yml --task-id <id> --status completed
+
+# Add a new task
+python3 update_task.py -f tasks.yml --add --name "Task name" --status not_started
+
+# Add a subtask under an existing task
+python3 update_task.py -f tasks.yml --add --parent <parent_id> --name "Subtask name"
+```
+
+To run these from the Flask server, use the SSH pool:
+```python
+from ssh_pool import ssh_pool
+
+with ssh_pool.get_ssh() as (client, sftp):
+    cmd = f'cd {ROOT_JAIL}/TODO/.project_manager && python3 update_task.py -f tasks.yml --task-id 5.1 --status completed'
+    stdin, stdout, stderr = client.exec_command(cmd)
+```
+
 ## Notes for AI Assistants
 
 - When adding new endpoints, always use `@require_auth` decorator
@@ -246,6 +300,7 @@ source venv/bin/activate && python app.py
 - **No sudo access**: I cannot run commands with sudo. Ask the user to run sudo commands manually
 - Server is Ubuntu 24.04
 - **TWO MACHINE ARCHITECTURE**: Flask is local, projects and Zellij are on Beast
+- **Check `{ROOT_JAIL}/TODO/.project_manager/tasks.yml` on Beast** for the latest TODO items and update statuses as tasks are completed
 
 ## Git Workflow
 

@@ -5,6 +5,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CodeViewer } from './CodeViewer';
 import { PdfViewer } from './PdfViewer';
+import { CsvViewer } from './CsvViewer';
+import { NotebookViewer } from './NotebookViewer';
 
 interface FileViewerPanelProps {
   path: string | null;
@@ -19,7 +21,7 @@ const CODE_EXTS = new Set([
   'rs', 'go', 'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp',
   'cs', 'php', 'rb', 'swift', 'kt', 'scala',
   'sql', 'dockerfile', 'makefile',
-  'tex', 'sty', 'cls', 'bib',
+  'tex', 'sty', 'cls', 'bib', 'bst',
   'html', 'htm', 'xml', 'svg',
   'lua', 'r', 'jl', 'zig', 'nim', 'dart', 'ex', 'exs',
   'vue', 'svelte',
@@ -36,7 +38,7 @@ const BINARY_EXTS = new Set([
   'db', 'sqlite', 'sqlite3',
 ]);
 
-type FileType = 'code' | 'markdown' | 'image' | 'pdf' | 'text' | 'binary';
+type FileType = 'code' | 'markdown' | 'image' | 'pdf' | 'csv' | 'notebook' | 'text' | 'binary';
 
 function detectFileType(filename: string): FileType {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -44,6 +46,8 @@ function detectFileType(filename: string): FileType {
 
   if (ext === 'pdf') return 'pdf';
   if (ext === 'md' || ext === 'markdown') return 'markdown';
+  if (ext === 'csv' || ext === 'tsv') return 'csv';
+  if (ext === 'ipynb') return 'notebook';
   if (IMAGE_EXTS.has(ext)) return 'image';
   if (BINARY_EXTS.has(ext)) return 'binary';
   if (CODE_EXTS.has(ext)) return 'code';
@@ -63,13 +67,11 @@ function ImageViewer({ url, alt }: { url: string; alt: string }) {
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
 
-  // Drag-to-pan state
   const dragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
   const clampZoom = (z: number) => Math.min(10, Math.max(0.1, z));
 
-  // Pinch-to-zoom (trackpad) and Ctrl+scroll
   const handleWheel = useCallback((e: WheelEvent) => {
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
@@ -77,7 +79,6 @@ function ImageViewer({ url, alt }: { url: string; alt: string }) {
     setZoom(z => clampZoom(z + delta));
   }, []);
 
-  // Attach wheel listener with passive:false
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -85,7 +86,6 @@ function ImageViewer({ url, alt }: { url: string; alt: string }) {
     return () => el.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
-  // Drag-to-pan handlers
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     const el = containerRef.current;
     if (!el) return;
@@ -103,10 +103,8 @@ function ImageViewer({ url, alt }: { url: string; alt: string }) {
     if (!dragging.current) return;
     const el = containerRef.current;
     if (!el) return;
-    const dx = e.clientX - dragStart.current.x;
-    const dy = e.clientY - dragStart.current.y;
-    el.scrollLeft = dragStart.current.scrollLeft - dx;
-    el.scrollTop = dragStart.current.scrollTop - dy;
+    el.scrollLeft = dragStart.current.scrollLeft - (e.clientX - dragStart.current.x);
+    el.scrollTop = dragStart.current.scrollTop - (e.clientY - dragStart.current.y);
   }, []);
 
   const onPointerUp = useCallback(() => {
@@ -118,8 +116,6 @@ function ImageViewer({ url, alt }: { url: string; alt: string }) {
     setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
   }, []);
 
-  // Compute displayed size: at zoom=1, fit within container
-  // At other zoom levels, scale from the natural size
   const imgStyle: React.CSSProperties = naturalSize.w > 0
     ? { width: naturalSize.w * zoom, height: naturalSize.h * zoom }
     : { maxWidth: '100%', maxHeight: '100%' };
@@ -223,6 +219,12 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
           </div>
         );
+
+      case 'csv':
+        return <CsvViewer content={content} />;
+
+      case 'notebook':
+        return <NotebookViewer content={content} />;
 
       case 'image':
         return <ImageViewer url={fileUrl} alt={fileName} />;

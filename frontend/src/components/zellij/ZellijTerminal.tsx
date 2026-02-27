@@ -143,12 +143,34 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
           selectionBackground: '#264f78',
         },
         allowProposedApi: true,
+        rightClickSelectsWord: true,
       });
 
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
-      term.loadAddon(new WebLinksAddon());
+      term.loadAddon(new WebLinksAddon((_, uri) => window.open(uri, '_blank')));
       term.open(terminalRef.current);
+
+      // Clipboard: copy selection on Ctrl+Shift+C, paste on Ctrl+Shift+V
+      term.attachCustomKeyEventHandler((e) => {
+        if (e.type !== 'keydown') return true;
+        // Ctrl+Shift+C → copy selection
+        if (e.ctrlKey && e.shiftKey && e.code === 'KeyC') {
+          const sel = term.getSelection();
+          if (sel) navigator.clipboard.writeText(sel);
+          return false;
+        }
+        // Ctrl+Shift+V → paste from clipboard
+        if (e.ctrlKey && e.shiftKey && e.code === 'KeyV') {
+          navigator.clipboard.readText().then(text => {
+            if (socketRef.current?.connected) {
+              socketRef.current.emit('input', text);
+            }
+          });
+          return false;
+        }
+        return true;
+      });
 
       setTimeout(() => {
         fitAddon.fit();
@@ -175,17 +197,23 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
       const target = e.target as HTMLElement;
       if (!target.closest('.xterm-container')) return;
 
+      // Allow Ctrl+Shift+C/V for clipboard
+      if (e.ctrlKey && e.shiftKey && (e.code === 'KeyC' || e.code === 'KeyV')) return;
+
       const suppressKeys = [
         'KeyT', 'KeyW', 'KeyN', 'KeyR', 'KeyP', 'KeyF', 'KeyG', 'KeyH', 'KeyJ',
+        'KeyK', 'KeyL', 'KeyQ',
         'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5',
         'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Tab',
       ];
       if (e.ctrlKey && suppressKeys.includes(e.code)) {
         e.preventDefault();
+        e.stopImmediatePropagation();
         return false;
       }
       if (e.altKey) {
         e.preventDefault();
+        e.stopImmediatePropagation();
         return false;
       }
     };

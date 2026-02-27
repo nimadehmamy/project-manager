@@ -17,3 +17,7 @@ See [AGENTS.md](./AGENTS.md) for full project context, architecture, and coding 
 - All endpoints require `@require_auth` decorator
 - All paths must go through `sanitize_path()`
 - WebSocket events via `socketio.emit()` for real-time updates
+
+## TODO Task Tracking
+
+Always refer to the project's TODO list on Beast at `{ROOT_JAIL}/TODO/.project_manager/tasks.yml` (where `ROOT_JAIL` comes from `config.py`). At the start of each session, fetch this file via SSH to see the latest priorities. Mark tasks as `in_progress` or `completed` using the `update_task.py` script in the same directory. See the "TODO Task Tracking" section in AGENTS.md for detailed usage.
