@@ -79,12 +79,12 @@ export interface TreeEntry {
   has_children?: boolean;
 }
 
-export const useTreeNode = (path: string | null) => {
+export const useTreeNode = (path: string | null, showHidden: boolean = false) => {
   return useQuery({
-    queryKey: ['tree', path],
+    queryKey: ['tree', path, showHidden],
     queryFn: async () => {
       if (!path) return [];
-      const data = await api.getTree(path);
+      const data = await api.getTree(path, showHidden);
       return data.entries as TreeEntry[];
     },
     enabled: !!path,

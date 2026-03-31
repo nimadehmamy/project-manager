@@ -11,6 +11,7 @@ import { Monitor, Link2, Unlink, Plus, AlertCircle, Terminal as TerminalIcon, Fo
 interface ZellijTerminalProps {
   projectPath: string | null;
   projectName: string;
+  focused?: boolean;
 }
 
 interface ZellijSession {
@@ -38,7 +39,7 @@ async function waitForFont(): Promise<void> {
   }
 }
 
-export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps) {
+export function ZellijTerminal({ projectPath, projectName, focused }: ZellijTerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -225,6 +226,22 @@ export function ZellijTerminal({ projectPath, projectName }: ZellijTerminalProps
       document.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [terminalReady]);
+
+  // Focus terminal and refit when focused prop changes
+  useEffect(() => {
+    if (focused && xtermRef.current) {
+      setTimeout(() => {
+        fitAddonRef.current?.fit();
+        xtermRef.current?.focus();
+        if (socketRef.current?.connected && xtermRef.current) {
+          socketRef.current.emit('resize', {
+            cols: xtermRef.current.cols,
+            rows: xtermRef.current.rows,
+          });
+        }
+      }, 50);
+    }
+  }, [focused]);
 
   const connectToTerminalService = (event: string, data: object) => {
     if (!projectPath) {

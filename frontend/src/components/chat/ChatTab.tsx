@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { ZellijTerminal } from '../zellij/ZellijTerminal';
-import { Bot, Terminal } from 'lucide-react';
+import { Bot, Terminal, ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
 
 interface ChatTabProps {
   projectPath: string | null;
   projectName: string;
+  onCollapse?: () => void;
+  maximized?: boolean;
+  onToggleMaximize?: () => void;
 }
 
-export function ChatTab({ projectPath, projectName }: ChatTabProps) {
+export function ChatTab({ projectPath, projectName, onCollapse, maximized, onToggleMaximize }: ChatTabProps) {
   const [mode, setMode] = useState<'terminal' | 'chat'>('terminal');
 
   return (
@@ -29,6 +32,26 @@ export function ChatTab({ projectPath, projectName }: ChatTabProps) {
             AI Chat
           </button>
         </div>
+        <div className="chat-header-actions">
+          {onToggleMaximize && (
+            <button
+              className="btn-icon"
+              onClick={onToggleMaximize}
+              title={maximized ? 'Restore panel size' : 'Maximize panel'}
+            >
+              {maximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            </button>
+          )}
+          {onCollapse && (
+            <button
+              className="btn-icon"
+              onClick={onCollapse}
+              title="Collapse panel"
+            >
+              <ChevronDown size={16} />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="chat-tab-content">
@@ -37,9 +60,10 @@ export function ChatTab({ projectPath, projectName }: ChatTabProps) {
           className="chat-mode-panel"
           style={{ display: mode === 'terminal' ? 'flex' : 'none' }}
         >
-          <ZellijTerminal 
-            projectPath={projectPath} 
-            projectName={projectName} 
+          <ZellijTerminal
+            projectPath={projectPath}
+            projectName={projectName}
+            focused={maximized}
           />
         </div>
         

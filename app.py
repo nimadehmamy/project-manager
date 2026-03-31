@@ -455,6 +455,7 @@ def api_tree():
     Returns has_children flag so the UI can show expand arrows.
     """
     path = request.args.get('path', '/')
+    show_hidden = request.args.get('show_hidden', 'false').lower() == 'true'
     safe_path = sanitize_path(path)
 
     if safe_path is None:
@@ -470,7 +471,7 @@ def api_tree():
             entries = []
             for attr in attrs:
                 name = attr.filename
-                if name.startswith('.'):
+                if not show_hidden and name.startswith('.'):
                     continue
 
                 is_dir = stat.S_ISDIR(attr.st_mode)
@@ -491,7 +492,7 @@ def api_tree():
                     try:
                         children = sftp.listdir(full_path)
                         entry['has_children'] = any(
-                            not c.startswith('.') for c in children
+                            (show_hidden or not c.startswith('.')) for c in children
                         )
                     except Exception:
                         entry['has_children'] = False

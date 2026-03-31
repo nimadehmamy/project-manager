@@ -3,6 +3,12 @@ import { X, Download, FileText, ZoomIn, ZoomOut, Edit3, Eye, Save, Loader2, Exte
 import { api } from '../../api/client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeHighlight from 'rehype-highlight';
+import rehypeKatex from 'rehype-katex';
+import 'highlight.js/styles/github-dark.css';
+import 'katex/dist/katex.min.css';
+import { useTheme } from '../../contexts/ThemeContext';
 import { CodeViewer } from './CodeViewer';
 import { PdfViewer } from './PdfViewer';
 import { CsvViewer } from './CsvViewer';
@@ -157,6 +163,8 @@ function ImageViewer({ url, alt }: { url: string; alt: string }) {
 }
 
 export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -294,6 +302,7 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
         <CodeViewer
           content={editContent}
           filename={fileName}
+          darkMode={isDark}
           readOnly={false}
           onContentChange={handleEditContentChange}
         />
@@ -303,14 +312,34 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
     switch (fileType) {
       case 'code':
       case 'text':
-        return <CodeViewer content={content} filename={fileName} />;
+        return <CodeViewer content={content} filename={fileName} darkMode={isDark} />;
 
-      case 'markdown':
+      case 'markdown': {
+        // Resolve relative image paths to the API
+        const dirPath = path ? path.split('/').slice(0, -1).join('/') : '';
         return (
           <div className="markdown-content" style={{ padding: '24px' }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeHighlight, rehypeKatex]}
+              components={{
+                img: ({ src, alt, ...props }) => {
+                  let resolvedSrc = src || '';
+                  if (resolvedSrc && !resolvedSrc.startsWith('http') && !resolvedSrc.startsWith('data:')) {
+                    const imgPath = resolvedSrc.startsWith('/')
+                      ? resolvedSrc
+                      : `${dirPath}/${resolvedSrc}`;
+                    resolvedSrc = `/api/file?path=${encodeURIComponent(imgPath)}`;
+                  }
+                  return <img src={resolvedSrc} alt={alt || ''} {...props} />;
+                },
+              }}
+            >
+              {content}
+            </ReactMarkdown>
           </div>
         );
+      }
 
       case 'csv':
         return <CsvViewer content={content} />;

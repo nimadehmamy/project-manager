@@ -27,16 +27,17 @@ interface FileTreeNodeProps {
   entry: TreeEntry;
   depth: number;
   showFiles: boolean;
+  showHidden: boolean;
   selectedPath: string | null;
   onSelect: (entry: TreeEntry) => void;
 }
 
-function FileTreeNode({ entry, depth, showFiles, selectedPath, onSelect }: FileTreeNodeProps) {
+function FileTreeNode({ entry, depth, showFiles, showHidden, selectedPath, onSelect }: FileTreeNodeProps) {
   const [expanded, setExpanded] = useState(false);
   const isSelected = selectedPath === entry.path;
 
   // Only fetch children when expanded
-  const { data: children, isLoading } = useTreeNode(expanded ? entry.path : null);
+  const { data: children, isLoading } = useTreeNode(expanded ? entry.path : null, showHidden);
 
   const handleToggle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -88,6 +89,7 @@ function FileTreeNode({ entry, depth, showFiles, selectedPath, onSelect }: FileT
                 entry={child}
                 depth={depth + 1}
                 showFiles={showFiles}
+                showHidden={showHidden}
                 selectedPath={selectedPath}
                 onSelect={onSelect}
               />
@@ -102,12 +104,13 @@ function FileTreeNode({ entry, depth, showFiles, selectedPath, onSelect }: FileT
 interface FileTreeProps {
   rootPath: string;
   showFiles?: boolean;
+  showHidden?: boolean;
   selectedPath?: string | null;
   onSelect: (entry: TreeEntry) => void;
 }
 
-export function FileTree({ rootPath, showFiles = true, selectedPath = null, onSelect }: FileTreeProps) {
-  const { data: entries, isLoading, error } = useTreeNode(rootPath);
+export function FileTree({ rootPath, showFiles = true, showHidden = false, selectedPath = null, onSelect }: FileTreeProps) {
+  const { data: entries, isLoading, error } = useTreeNode(rootPath, showHidden);
 
   if (isLoading) {
     return <div className="file-tree-loading">Loading...</div>;
@@ -131,6 +134,7 @@ export function FileTree({ rootPath, showFiles = true, selectedPath = null, onSe
           entry={entry}
           depth={0}
           showFiles={showFiles}
+          showHidden={showHidden}
           selectedPath={selectedPath}
           onSelect={onSelect}
         />

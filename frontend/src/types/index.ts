@@ -56,7 +56,7 @@ export interface ManagedProject {
   expanded?: boolean;
 }
 
-export type TabType = 'home' | 'progress' | 'summary' | 'todos' | 'files' | 'graph' | 'chat' | 'profile';
+export type TabType = 'home' | 'progress' | 'summary' | 'todos' | 'files' | 'graph' | 'profile';
 
 export interface User {
   username: string;

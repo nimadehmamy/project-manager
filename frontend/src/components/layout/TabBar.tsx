@@ -13,7 +13,6 @@ const mainTabs: { id: TabType; label: string }[] = [
   { id: 'todos', label: 'Todos' },
   { id: 'files', label: 'Files' },
   { id: 'graph', label: 'Graph' },
-  { id: 'chat', label: 'Chat' },
 ];
 
 const rightTabs: { id: TabType; label: string }[] = [

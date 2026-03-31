@@ -53,8 +53,8 @@ class ApiClient {
     return response.data;
   }
 
-  async getTree(path: string) {
-    const response = await this.client.get(`/api/tree?path=${encodeURIComponent(path)}`);
+  async getTree(path: string, showHidden: boolean = false) {
+    const response = await this.client.get(`/api/tree?path=${encodeURIComponent(path)}&show_hidden=${showHidden}`);
     return response.data;
   }
 
