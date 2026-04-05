@@ -6,11 +6,10 @@ import { io, Socket } from 'socket.io-client';
 import 'xterm/css/xterm.css';
 import { api } from '../../api/client';
 import { useSocket } from '../../contexts/SocketContext';
-import { Monitor, Link2, Unlink, Plus, AlertCircle, Terminal as TerminalIcon, FolderOpen } from 'lucide-react';
+import { Monitor, Unlink, Plus, AlertCircle, Terminal as TerminalIcon, FolderOpen } from 'lucide-react';
 
 interface ZellijTerminalProps {
   projectPath: string | null;
-  projectName: string;
   focused?: boolean;
 }
 
@@ -39,7 +38,7 @@ async function waitForFont(): Promise<void> {
   }
 }
 
-export function ZellijTerminal({ projectPath, projectName, focused }: ZellijTerminalProps) {
+export function ZellijTerminal({ projectPath, focused }: ZellijTerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -50,6 +49,7 @@ export function ZellijTerminal({ projectPath, projectName, focused }: ZellijTerm
   const [sessions, setSessions] = useState<ZellijSession[]>([]);
   const [projectSession, setProjectSession] = useState<ZellijSession | null>(null);
   const [connected, setConnected] = useState(false);
+  const [connectedSession, setConnectedSession] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [terminalReady, setTerminalReady] = useState(false);
@@ -243,7 +243,7 @@ export function ZellijTerminal({ projectPath, projectName, focused }: ZellijTerm
     }
   }, [focused]);
 
-  const connectToTerminalService = (event: string, data: object) => {
+  const connectToTerminalService = (event: string, data: object, sessionName?: string) => {
     if (!projectPath) {
       setError('No project selected');
       return;
@@ -268,6 +268,7 @@ export function ZellijTerminal({ projectPath, projectName, focused }: ZellijTerm
 
     socket.on('ready', () => {
       setConnected(true);
+      setConnectedSession(sessionName || null);
       setLoading(false);
 
       if (inputHandlerRef.current) {
@@ -303,10 +304,12 @@ export function ZellijTerminal({ projectPath, projectName, focused }: ZellijTerm
 
     socket.on('exit', () => {
       setConnected(false);
+      setConnectedSession(null);
     });
 
     socket.on('disconnect', () => {
       setConnected(false);
+      setConnectedSession(null);
     });
 
     socket.on('connect_error', (err) => {
@@ -323,7 +326,7 @@ export function ZellijTerminal({ projectPath, projectName, focused }: ZellijTerm
     connectToTerminalService('attach_zellij', {
       path: projectPath,
       session: sessionName
-    });
+    }, sessionName);
   };
 
   const disconnect = () => {
@@ -336,6 +339,7 @@ export function ZellijTerminal({ projectPath, projectName, focused }: ZellijTerm
       socketRef.current = null;
     }
     setConnected(false);
+    setConnectedSession(null);
   };
 
   const createSession = async (agentType: string = 'claude') => {
@@ -364,67 +368,9 @@ export function ZellijTerminal({ projectPath, projectName, focused }: ZellijTerm
 
   return (
     <div className="zellij-terminal">
-      <div className="zellij-toolbar">
-        <div className="zellij-session-info">
-          {projectSession ? (
-            <>
-              <span className="session-badge active">
-                <Monitor size={14} />
-                {projectSession.name}
-              </span>
-              {projectSession.agent_type && (
-                <span className="agent-badge">{projectSession.agent_type}</span>
-              )}
-            </>
-          ) : (
-            <span className="no-session">No zellij session for {projectName}</span>
-          )}
-        </div>
-
-        <div className="zellij-actions">
-          <button
-            className="btn btn-sm btn-secondary"
-            onClick={openNewTerminal}
-            disabled={loading || !projectPath || connected}
-          >
-            <FolderOpen size={14} />
-            New Terminal
-          </button>
-
-          {projectSession && !connected && (
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={() => connectToSession(projectSession.name)}
-              disabled={loading}
-            >
-              <Link2 size={14} />
-              Connect Zellij
-            </button>
-          )}
-
-          {connected && (
-            <button className="btn btn-sm" onClick={disconnect}>
-              <Unlink size={14} />
-              Disconnect
-            </button>
-          )}
-
-          {!projectSession && (
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={() => createSession('claude')}
-              disabled={loading || !projectPath}
-            >
-              <Plus size={14} />
-              Create Session
-            </button>
-          )}
-        </div>
-      </div>
-
       {error && (
         <div className="zellij-error">
-          <AlertCircle size={16} />
+          <AlertCircle size={14} />
           {error}
         </div>
       )}
@@ -451,7 +397,7 @@ export function ZellijTerminal({ projectPath, projectName, focused }: ZellijTerm
                     className="btn btn-secondary"
                     onClick={() => connectToSession(projectSession.name)}
                   >
-                    <Link2 size={16} />
+                    <Monitor size={16} />
                     Connect to {projectSession.name}
                   </button>
                 ) : (
@@ -476,25 +422,39 @@ export function ZellijTerminal({ projectPath, projectName, focused }: ZellijTerm
         )}
       </div>
 
-      {sessions.length > 0 && (
-        <div className="zellij-sessions-list">
-          <h4>All Zellij Sessions</h4>
-          <div className="sessions-grid">
-            {sessions.map((session) => (
-              <button
-                key={session.name}
-                className={`session-item ${session.name === projectSession?.name ? 'active' : ''}`}
-                onClick={() => connectToSession(session.name)}
-              >
-                <Monitor size={14} />
-                <span className="session-name">{session.name}</span>
-                {session.agent_type && <span className="agent-tag">{session.agent_type}</span>}
-                {session.is_active && <span className="status-dot" />}
-              </button>
-            ))}
-          </div>
+      <div className="zellij-session-bar">
+        <div className="zellij-session-tabs">
+          {sessions.map((session) => (
+            <button
+              key={session.name}
+              className={`session-tab ${connectedSession === session.name ? 'connected' : ''} ${session.name === projectSession?.name ? 'project' : ''}`}
+              onClick={() => connectToSession(session.name)}
+              title={session.agent_type ? `${session.name} (${session.agent_type})` : session.name}
+            >
+              <Monitor size={12} />
+              <span className="session-tab-name">{session.name}</span>
+              {session.agent_type && <span className="agent-tag">{session.agent_type}</span>}
+              {session.is_active && <span className="status-dot" />}
+            </button>
+          ))}
         </div>
-      )}
+        <div className="zellij-bar-actions">
+          <button
+            className="btn btn-sm btn-secondary"
+            onClick={openNewTerminal}
+            disabled={loading || !projectPath}
+          >
+            <FolderOpen size={12} />
+            New Terminal
+          </button>
+          {connected && (
+            <button className="btn btn-sm" onClick={disconnect}>
+              <Unlink size={12} />
+              Disconnect
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

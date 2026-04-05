@@ -4,13 +4,12 @@ import { Bot, Terminal, ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
 
 interface ChatTabProps {
   projectPath: string | null;
-  projectName: string;
   onCollapse?: () => void;
   maximized?: boolean;
   onToggleMaximize?: () => void;
 }
 
-export function ChatTab({ projectPath, projectName, onCollapse, maximized, onToggleMaximize }: ChatTabProps) {
+export function ChatTab({ projectPath, onCollapse, maximized, onToggleMaximize }: ChatTabProps) {
   const [mode, setMode] = useState<'terminal' | 'chat'>('terminal');
 
   return (
@@ -21,14 +20,14 @@ export function ChatTab({ projectPath, projectName, onCollapse, maximized, onTog
             className={`mode-btn ${mode === 'terminal' ? 'active' : ''}`}
             onClick={() => setMode('terminal')}
           >
-            <Terminal size={16} />
+            <Terminal size={14} />
             Terminal (Zellij)
           </button>
           <button
             className={`mode-btn ${mode === 'chat' ? 'active' : ''}`}
             onClick={() => setMode('chat')}
           >
-            <Bot size={16} />
+            <Bot size={14} />
             AI Chat
           </button>
         </div>
@@ -39,7 +38,7 @@ export function ChatTab({ projectPath, projectName, onCollapse, maximized, onTog
               onClick={onToggleMaximize}
               title={maximized ? 'Restore panel size' : 'Maximize panel'}
             >
-              {maximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+              {maximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             </button>
           )}
           {onCollapse && (
@@ -48,7 +47,7 @@ export function ChatTab({ projectPath, projectName, onCollapse, maximized, onTog
               onClick={onCollapse}
               title="Collapse panel"
             >
-              <ChevronDown size={16} />
+              <ChevronDown size={14} />
             </button>
           )}
         </div>
@@ -56,19 +55,18 @@ export function ChatTab({ projectPath, projectName, onCollapse, maximized, onTog
 
       <div className="chat-tab-content">
         {/* Terminal - always rendered but hidden when not active */}
-        <div 
+        <div
           className="chat-mode-panel"
           style={{ display: mode === 'terminal' ? 'flex' : 'none' }}
         >
           <ZellijTerminal
             projectPath={projectPath}
-            projectName={projectName}
             focused={maximized}
           />
         </div>
-        
+
         {/* AI Chat - always rendered but hidden when not active */}
-        <div 
+        <div
           className="chat-mode-panel"
           style={{ display: mode === 'chat' ? 'flex' : 'none' }}
         >
@@ -77,7 +75,7 @@ export function ChatTab({ projectPath, projectName, onCollapse, maximized, onTog
             <h3>AI Chat</h3>
             <p>Direct chat with AI assistant coming soon!</p>
             <p className="hint">
-              For now, use the Terminal mode to interact with 
+              For now, use the Terminal mode to interact with
               Claude, Kimi, or other AI agents in Zellij.
             </p>
           </div>

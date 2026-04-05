@@ -288,7 +288,6 @@ function AppContent() {
           <div style={bottomOpen ? { display: 'flex', flexDirection: 'column', height: '100%' } : { display: 'none' }}>
             <ChatTab
               projectPath={selectedProject}
-              projectName={projectName}
               onCollapse={() => toggleBottom(false)}
               maximized={bottomMaximized}
               onToggleMaximize={toggleBottomMaximize}

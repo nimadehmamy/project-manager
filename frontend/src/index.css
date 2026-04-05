@@ -1791,66 +1791,6 @@ code[class*="language-"] {
   overflow: hidden;
 }
 
-.zellij-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: #252526;
-  border-bottom: 1px solid #333;
-}
-
-.zellij-session-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.session-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  background: #1e1e1e;
-  color: #858585;
-  border: 1px solid #333;
-}
-
-.session-badge.active {
-  background: #1a4d1a;
-  color: #4ec94e;
-  border-color: #2d5a2d;
-}
-
-.agent-badge {
-  padding: 2px 8px;
-  background: #094771;
-  color: #3794ff;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.no-session {
-  color: #858585;
-  font-size: 0.875rem;
-}
-
-.zellij-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.zellij-actions .btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .zellij-buttons {
   display: flex;
   gap: 12px;
@@ -1858,20 +1798,15 @@ code[class*="language-"] {
   flex-wrap: wrap;
 }
 
-.zellij-actions .btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .zellij-error {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 4px 12px;
   background: #5a1d1d;
   color: #f48771;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
+  flex-shrink: 0;
 }
 
 .zellij-terminal-container {
@@ -1936,72 +1871,99 @@ code[class*="language-"] {
   margin-bottom: 16px;
 }
 
-.zellij-sessions-list {
-  padding: 12px 16px;
-  background: #252526;
-  border-top: 1px solid #333;
-  max-height: 150px;
-  overflow-y: auto;
-}
-
-.zellij-sessions-list h4 {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: #858585;
-  margin-bottom: 8px;
-}
-
-.sessions-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.session-item {
+/* Merged session bar (replaces old toolbar + sessions list) */
+.zellij-session-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: #1e1e1e;
-  border: 1px solid #333;
-  border-radius: 4px;
-  color: #ccc;
-  font-size: 0.8125rem;
+  background: #252526;
+  border-top: 1px solid #333;
+  flex-shrink: 0;
+  min-height: 0;
+}
+
+.zellij-session-tabs {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  gap: 1px;
+}
+
+/* Hide scrollbar but keep scrolling */
+.zellij-session-tabs::-webkit-scrollbar {
+  height: 0;
+}
+
+.session-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: transparent;
+  border: none;
+  border-top: 2px solid transparent;
+  color: #858585;
+  font-size: 0.75rem;
   cursor: pointer;
   transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.session-item:hover {
+.session-tab:hover {
   background: #2a2d2e;
-  border-color: #454545;
+  color: #ccc;
 }
 
-.session-item.active {
-  background: #094771;
-  border-color: #0e639c;
+.session-tab.project {
+  color: #ccc;
+}
+
+.session-tab.connected {
+  background: #1e1e1e;
+  border-top-color: var(--accent-blue, #58a6ff);
   color: #fff;
 }
 
-.session-name {
+.session-tab-name {
   font-weight: 500;
 }
 
 .agent-tag {
-  padding: 1px 6px;
+  padding: 1px 5px;
   background: #333;
   border-radius: 3px;
-  font-size: 0.625rem;
+  font-size: 0.5625rem;
   text-transform: uppercase;
   font-weight: 600;
 }
 
+.session-tab.connected .agent-tag {
+  background: #094771;
+  color: #3794ff;
+}
+
 .status-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   background: #4ec94e;
   border-radius: 50%;
-  margin-left: 4px;
+}
+
+.zellij-bar-actions {
+  display: flex;
+  gap: 6px;
+  padding: 0 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.zellij-bar-actions .btn {
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .zellij-loading,
@@ -2042,7 +2004,7 @@ code[class*="language-"] {
 }
 
 .chat-tab-header {
-  padding: 8px 12px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   display: flex;
@@ -2063,13 +2025,13 @@ code[class*="language-"] {
 .mode-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  gap: 6px;
+  padding: 4px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 5px;
   background: var(--surface);
   color: var(--text-secondary);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
