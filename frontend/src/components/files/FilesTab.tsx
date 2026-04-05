@@ -8,6 +8,7 @@ import type { TreeEntry } from '../../hooks/useProjects';
 
 interface FilesTabProps {
   projectPath: string | null;
+  isActive?: boolean;
 }
 
 const TREE_WIDTH_KEY = 'pm-files-tree-width';
@@ -16,7 +17,7 @@ const DEFAULT_TREE_WIDTH = 280;
 const MIN_TREE_WIDTH = 180;
 const MAX_TREE_WIDTH = 500;
 
-export function FilesTab({ projectPath }: FilesTabProps) {
+export function FilesTab({ projectPath, isActive }: FilesTabProps) {
   const [viewingFile, setViewingFile] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [treeWidth, setTreeWidth] = useState(() => {
@@ -151,6 +152,7 @@ export function FilesTab({ projectPath }: FilesTabProps) {
         <FileViewerPanel
           path={viewingFile}
           onClose={() => setViewingFile(null)}
+          isActive={isActive}
         />
       </div>
     </div>

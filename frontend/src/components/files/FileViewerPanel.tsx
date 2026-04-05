@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Download, FileText, ZoomIn, ZoomOut, Edit3, Eye, Save, Loader2, ExternalLink } from 'lucide-react';
 import { api } from '../../api/client';
 import ReactMarkdown from 'react-markdown';
@@ -17,6 +18,7 @@ import { NotebookViewer } from './NotebookViewer';
 interface FileViewerPanelProps {
   path: string | null;
   onClose: () => void;
+  isActive?: boolean;
 }
 
 const CODE_EXTS = new Set([
@@ -67,7 +69,7 @@ function detectFileType(filename: string): FileType {
   return 'text';
 }
 
-/** Image viewer with pinch-to-zoom and drag-to-pan */
+/** Image viewer with pinch-to-zoom, drag-to-pan, and floating controls */
 function ImageViewer({ url, alt }: { url: string; alt: string }) {
   const [zoom, setZoom] = useState(1);
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
@@ -77,6 +79,34 @@ function ImageViewer({ url, alt }: { url: string; alt: string }) {
 
   const dragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+
+  // Auto-hide controls
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [controlsHovered, setControlsHovered] = useState(false);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const resetHideTimer = useCallback(() => {
+    setControlsVisible(true);
+    clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => {
+      if (!controlsHovered) setControlsVisible(false);
+    }, 2000);
+  }, [controlsHovered]);
+
+  useEffect(() => {
+    resetHideTimer();
+    return () => clearTimeout(hideTimer.current);
+  }, [resetHideTimer]);
+
+  // Keep visible while hovered
+  useEffect(() => {
+    if (controlsHovered) {
+      clearTimeout(hideTimer.current);
+      setControlsVisible(true);
+    } else {
+      resetHideTimer();
+    }
+  }, [controlsHovered, resetHideTimer]);
 
   const clampZoom = (z: number) => Math.min(10, Math.max(0.1, z));
 
@@ -129,19 +159,7 @@ function ImageViewer({ url, alt }: { url: string; alt: string }) {
     : { maxWidth: '100%', maxHeight: '100%' };
 
   return (
-    <div className="image-viewer-wrapper">
-      <div className="image-zoom-controls">
-        <button className="btn btn-sm" onClick={() => setZoom(z => clampZoom(z - 0.2))}>
-          <ZoomOut size={16} />
-        </button>
-        <span>{Math.round(zoom * 100)}%</span>
-        <button className="btn btn-sm" onClick={() => setZoom(z => clampZoom(z + 0.2))}>
-          <ZoomIn size={16} />
-        </button>
-        {zoom !== 1 && (
-          <button className="btn btn-sm" onClick={() => setZoom(1)}>Reset</button>
-        )}
-      </div>
+    <div className="image-viewer-wrapper" onMouseMove={resetHideTimer}>
       <div
         ref={containerRef}
         className="image-viewer-container"
@@ -158,11 +176,27 @@ function ImageViewer({ url, alt }: { url: string; alt: string }) {
           onLoad={onImageLoad}
         />
       </div>
+      <div
+        className={`image-controls-float ${controlsVisible ? 'visible' : ''}`}
+        onMouseEnter={() => setControlsHovered(true)}
+        onMouseLeave={() => setControlsHovered(false)}
+      >
+        <button className="btn btn-sm" onClick={() => setZoom(z => clampZoom(z - 0.2))}>
+          <ZoomOut size={14} />
+        </button>
+        <span>{Math.round(zoom * 100)}%</span>
+        <button className="btn btn-sm" onClick={() => setZoom(z => clampZoom(z + 0.2))}>
+          <ZoomIn size={14} />
+        </button>
+        {zoom !== 1 && (
+          <button className="btn btn-sm" onClick={() => setZoom(1)}>Reset</button>
+        )}
+      </div>
     </div>
   );
 }
 
-export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
+export function FileViewerPanel({ path, onClose, isActive }: FileViewerPanelProps) {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const [content, setContent] = useState('');
@@ -176,6 +210,14 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [vsCodeToast, setVsCodeToast] = useState(false);
+
+  // Portal target
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const el = document.getElementById('tabbar-center-slot');
+    setPortalTarget(el);
+  }, []);
 
   const fileType = path ? detectFileType(path.split('/').pop() || '') : 'text';
   const fileName = path?.split('/').pop() || '';
@@ -275,9 +317,61 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
     setTimeout(() => setVsCodeToast(false), 3000);
   };
 
+  const handleDownload = () => {
+    window.open(`${fileUrl}&download=true`, '_blank');
+  };
+
+  // Breadcrumb + actions portalled into tab bar
+  const renderPortalContent = () => {
+    if (!path || !isActive) return null;
+
+    return (
+      <>
+        <div className="viewer-breadcrumb-inline">
+          <span dir="ltr">{path}</span>
+          {isDirty && <span className="unsaved-dot" title="Unsaved changes" />}
+        </div>
+        <div className="viewer-actions-inline">
+          {isEditable && !isEditing && (
+            <button className="btn-icon btn-icon-sm" onClick={enterEditMode} title="Edit file">
+              <Edit3 size={14} />
+            </button>
+          )}
+          {isEditing && (
+            <>
+              <button
+                className={`btn-icon btn-icon-sm btn-save ${isDirty ? 'dirty' : ''}`}
+                onClick={handleSave}
+                disabled={!isDirty || isSaving}
+                title={isDirty ? 'Save (Ctrl+S)' : 'No changes to save'}
+              >
+                {isSaving ? <Loader2 size={14} className="spin" /> : <Save size={14} />}
+              </button>
+              <button className="btn-icon btn-icon-sm" onClick={exitEditMode} title="Back to viewer">
+                <Eye size={14} />
+              </button>
+            </>
+          )}
+          {isEditable && (
+            <button className="btn-icon btn-icon-sm" onClick={handleOpenVSCode} title="Open in VS Code">
+              <ExternalLink size={14} />
+            </button>
+          )}
+          <button className="btn-icon btn-icon-sm" onClick={handleDownload} title="Download">
+            <Download size={14} />
+          </button>
+          <button className="btn-icon btn-icon-sm" onClick={onClose} title="Close">
+            <X size={14} />
+          </button>
+        </div>
+      </>
+    );
+  };
+
   if (!path) {
     return (
       <div className="file-viewer-panel empty-viewer">
+        {portalTarget && createPortal(renderPortalContent(), portalTarget)}
         <div className="empty-state">
           <FileText size={48} style={{ opacity: 0.3 }} />
           <p>Select a file to view</p>
@@ -285,12 +379,6 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
       </div>
     );
   }
-
-  const handleDownload = () => {
-    window.open(`${fileUrl}&download=true`, '_blank');
-  };
-
-  const pathParts = path.split('/').filter(Boolean);
 
   const renderContent = () => {
     if (loading) return <div className="loading">Loading...</div>;
@@ -369,57 +457,10 @@ export function FileViewerPanel({ path, onClose }: FileViewerPanelProps) {
 
   return (
     <div className="file-viewer-panel">
-      <div className="viewer-header">
-        <div className="viewer-breadcrumb">
-          {pathParts.map((part, i) => (
-            <span key={i}>
-              {i > 0 && <span className="breadcrumb-sep">/</span>}
-              <span className={i === pathParts.length - 1 ? 'breadcrumb-current' : 'breadcrumb-part'}>
-                {part}
-              </span>
-            </span>
-          ))}
-          {isDirty && <span className="unsaved-dot" title="Unsaved changes" />}
-        </div>
-        <div className="viewer-actions">
-          {isEditable && !isEditing && (
-            <button className="btn-icon" onClick={enterEditMode} title="Edit file">
-              <Edit3 size={18} />
-            </button>
-          )}
-          {isEditing && (
-            <>
-              <button
-                className={`btn-icon btn-save ${isDirty ? 'dirty' : ''}`}
-                onClick={handleSave}
-                disabled={!isDirty || isSaving}
-                title={isDirty ? 'Save (Ctrl+S)' : 'No changes to save'}
-              >
-                {isSaving ? <Loader2 size={18} className="spin" /> : <Save size={18} />}
-              </button>
-              <button className="btn-icon" onClick={exitEditMode} title="Back to viewer">
-                <Eye size={18} />
-              </button>
-            </>
-          )}
-          {isEditable && (
-            <div style={{ position: 'relative' }}>
-              <button className="btn-icon" onClick={handleOpenVSCode} title="Open in VS Code">
-                <ExternalLink size={18} />
-              </button>
-              {vsCodeToast && (
-                <div className="vscode-toast">Opening VS Code...</div>
-              )}
-            </div>
-          )}
-          <button className="btn-icon" onClick={handleDownload} title="Download">
-            <Download size={18} />
-          </button>
-          <button className="btn-icon" onClick={onClose} title="Close">
-            <X size={18} />
-          </button>
-        </div>
-      </div>
+      {portalTarget && createPortal(renderPortalContent(), portalTarget)}
+      {vsCodeToast && (
+        <div className="vscode-toast-float">Opening VS Code...</div>
+      )}
       {saveError && (
         <div className="save-error">
           Save failed: {saveError}

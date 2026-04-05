@@ -35,13 +35,14 @@ export function TabBar({ activeTab, onTabChange }: TabBarProps) {
           </button>
         ))}
       </div>
+      <div id="tabbar-center-slot" className="tabbar-center-slot" />
       <div className="tab-group right-tabs">
         <button
           className="theme-toggle"
           onClick={toggleTheme}
           title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
         >
-          {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+          {theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}
         </button>
         {rightTabs.map((tab) => (
           <button

@@ -25,12 +25,14 @@ function PersistentTabs({
   activeTab,
   selectedProject,
   projectName,
-  onProjectSelect
+  onProjectSelect,
+  isFilesActive
 }: {
   activeTab: TabType;
   selectedProject: string | null;
   projectName: string;
   onProjectSelect: (path: string, name: string) => void;
+  isFilesActive: boolean;
 }) {
   return (
     <>
@@ -69,7 +71,7 @@ function PersistentTabs({
       <div
         className={`tab-panel ${activeTab === 'files' ? 'tab-active' : 'tab-hidden'}`}
       >
-        <FilesTab projectPath={selectedProject} />
+        <FilesTab projectPath={selectedProject} isActive={isFilesActive} />
       </div>
 
       {/* Profile Tab */}
@@ -177,8 +179,8 @@ function AppContent() {
     setBottomMaximized(false);
     const startY = e.clientY;
     const startHeight = bottomHeight;
-    // Reserve space for tab bar (~45px) + resize handle (4px)
-    const maxHeight = mainRef.current ? mainRef.current.clientHeight - 49 : 9999;
+    // Reserve space for tab bar (~32px) + resize handle (4px)
+    const maxHeight = mainRef.current ? mainRef.current.clientHeight - 36 : 9999;
 
     const onMouseMove = (ev: MouseEvent) => {
       const delta = startY - ev.clientY;
@@ -262,6 +264,7 @@ function AppContent() {
               selectedProject={selectedProject}
               projectName={projectName}
               onProjectSelect={handleProjectSelect}
+              isFilesActive={activeTab === 'files'}
             />
           </div>
         </div>
