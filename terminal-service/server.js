@@ -64,15 +64,19 @@ function createTerminal(socketId, options) {
   
   // Build SSH command
   let sshCommand;
-  const sshBase = `ssh -t -p ${SSH_PORT} -i ${SSH_KEY} -o IdentitiesOnly=yes ${SSH_USER}@${SSH_HOST}`;
+  // Use RequestTTY=force instead of -t because -t fails to allocate a TTY
+  // when spawned via node-pty/bash -c, causing TERM=dumb and line-buffered output
+  const sshBase = `ssh -o RequestTTY=force -p ${SSH_PORT} -i ${SSH_KEY} -o IdentitiesOnly=yes ${SSH_USER}@${SSH_HOST}`;
   // Ensure ~/.local/bin is in PATH for zellij
   const pathExport = 'export PATH="$HOME/.local/bin:$PATH"';
+  // Explicitly set TERM on the remote side as a safety net
+  const termExport = 'export TERM=xterm-256color';
   if (type === 'zellij' && session) {
     // Attach to existing Zellij session
-    sshCommand = `${sshBase} "${pathExport} && cd ${beastPath} && zellij attach ${session}"`;
+    sshCommand = `${sshBase} "${pathExport} && ${termExport} && cd ${beastPath} && zellij attach ${session}"`;
   } else {
     // New shell session
-    sshCommand = `${sshBase} "cd ${beastPath} && exec bash -l"`;
+    sshCommand = `${sshBase} "${termExport} && cd ${beastPath} && exec bash -l"`;
   }
   
   console.log(`[${socketId}] Creating terminal: ${type}`);

@@ -12,6 +12,8 @@ import { ProgressTab } from './components/progress/ProgressTab';
 import { FilesTab } from './components/files/FilesTab';
 import { ProfilePage } from './components/profile/ProfilePage';
 import { ChatTab } from './components/chat/ChatTab';
+import { MobileView } from './components/mobile/MobileView';
+import { useMediaQuery } from './hooks/useMediaQuery';
 import type { TabType } from './types';
 
 const MIN_SIDEBAR_WIDTH = 200;
@@ -94,6 +96,13 @@ const queryClient = new QueryClient({
 });
 
 function AppContent() {
+  const isMobile = useMediaQuery('(max-width: 768px)');
+
+  // On mobile, render the mobile-specific view
+  if (isMobile) {
+    return <MobileView />;
+  }
+
   // URL handling - parse project from URL hash
   const getProjectFromUrl = () => {
     const hash = window.location.hash.slice(1); // Remove #

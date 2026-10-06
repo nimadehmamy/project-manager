@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { io, Socket } from 'socket.io-client';
+import { useTheme } from '../../contexts/ThemeContext';
 import 'xterm/css/xterm.css';
 
 interface TerminalPanelProps {
@@ -12,6 +13,54 @@ interface TerminalPanelProps {
   onClose?: () => void;
 }
 
+// Dark theme (default)
+const darkTheme = {
+  background: '#1e1e1e',
+  foreground: '#d4d4d4',
+  cursor: '#d4d4d4',
+  selectionBackground: '#264f78',
+  black: '#000000',
+  red: '#cd3131',
+  green: '#0dbc79',
+  yellow: '#e5e510',
+  blue: '#2472c8',
+  magenta: '#bc3fbc',
+  cyan: '#11a8cd',
+  white: '#e5e5e5',
+  brightBlack: '#666666',
+  brightRed: '#f14c4c',
+  brightGreen: '#23d18b',
+  brightYellow: '#f5f543',
+  brightBlue: '#3b8eea',
+  brightMagenta: '#d670d6',
+  brightCyan: '#29b8db',
+  brightWhite: '#e5e5e5',
+};
+
+// Light theme
+const lightTheme = {
+  background: '#ffffff',
+  foreground: '#333333',
+  cursor: '#333333',
+  selectionBackground: '#add6ff',
+  black: '#000000',
+  red: '#cd3131',
+  green: '#008000',
+  yellow: '#795e26',
+  blue: '#0000ff',
+  magenta: '#af00db',
+  cyan: '#098658',
+  white: '#e5e5e5',
+  brightBlack: '#666666',
+  brightRed: '#cd3131',
+  brightGreen: '#008000',
+  brightYellow: '#795e26',
+  brightBlue: '#0000ff',
+  brightMagenta: '#af00db',
+  brightCyan: '#098658',
+  brightWhite: '#e5e5e5',
+};
+
 export default function TerminalPanel({ 
   projectId, 
   projectPath = '/home/nima/__work/project_manager',
@@ -19,6 +68,9 @@ export default function TerminalPanel({
   mode = 'new',
   onClose 
 }: TerminalPanelProps) {
+  const { theme: appTheme } = useTheme();
+  const isDark = appTheme === 'dark';
+  
   const terminalRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -29,25 +81,12 @@ export default function TerminalPanel({
   const initTerminal = useCallback(() => {
     if (!terminalRef.current) return;
 
-    // Create terminal
+    // Create terminal with current theme
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
       fontFamily: '"JetBrains Mono", "Fira Code", "Hack", "DejaVu Sans Mono", "SF Mono", "Monaco", "Menlo", monospace',
-      theme: {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4',
-        cursor: '#d4d4d4',
-        selectionBackground: '#264f78',
-        black: '#000000',
-        red: '#cd3131',
-        green: '#0dbc79',
-        yellow: '#e5e510',
-        blue: '#2472c8',
-        magenta: '#bc3fbc',
-        cyan: '#11a8cd',
-        white: '#e5e5e5',
-      },
+      theme: isDark ? darkTheme : lightTheme,
       cols: 80,
       rows: 24,
     });
@@ -142,7 +181,7 @@ export default function TerminalPanel({
     return () => {
       window.removeEventListener('resize', handleResize);
     };
-  }, [projectId, projectPath, zellijSessionName, mode]);
+  }, [projectId, projectPath, zellijSessionName, mode, isDark]);
 
   useEffect(() => {
     const cleanup = initTerminal();
@@ -153,6 +192,14 @@ export default function TerminalPanel({
       termRef.current?.dispose();
     };
   }, [initTerminal]);
+
+  // Update terminal theme when app theme changes
+  useEffect(() => {
+    const term = termRef.current;
+    if (term) {
+      term.options.theme = isDark ? darkTheme : lightTheme;
+    }
+  }, [isDark]);
 
   const handleNewTerminal = () => {
     socketRef.current?.emit('new_terminal', {
@@ -169,13 +216,19 @@ export default function TerminalPanel({
     }
   };
 
+  // Dynamic styles based on theme
+  const containerBg = isDark ? 'bg-[#1e1e1e]' : 'bg-white';
+  const toolbarBg = isDark ? 'bg-[#2d2d2d]' : 'bg-gray-100';
+  const borderColor = isDark ? 'border-gray-700' : 'border-gray-300';
+  const textColor = isDark ? 'text-gray-400' : 'text-gray-600';
+
   return (
-    <div className="flex flex-col h-full bg-[#1e1e1e] rounded-lg overflow-hidden">
+    <div className={`flex flex-col h-full ${containerBg} rounded-lg overflow-hidden`}>
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 py-2 bg-[#2d2d2d] border-b border-gray-700">
+      <div className={`flex items-center justify-between px-3 py-2 ${toolbarBg} border-b ${borderColor}`}>
         <div className="flex items-center gap-2">
           <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
-          <span className="text-xs text-gray-400">
+          <span className={`text-xs ${textColor}`}>
             {connected ? 'Connected' : 'Disconnected'}
           </span>
         </div>
@@ -218,7 +271,7 @@ export default function TerminalPanel({
         ref={terminalRef} 
         className="flex-1 p-2 min-h-[300px]" 
         style={{ 
-          backgroundColor: '#1e1e1e',
+          backgroundColor: isDark ? '#1e1e1e' : '#ffffff',
           height: '100%',
           overflow: 'hidden'
         }}

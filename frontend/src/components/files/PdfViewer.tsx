@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, memo } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { ZoomIn, ZoomOut } from 'lucide-react';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -11,13 +11,28 @@ interface PdfViewerProps {
   url: string;
 }
 
+// Memoized page component to prevent re-mounting during scale changes
+interface MemoPageProps {
+  pageNumber: number;
+  scale: number;
+}
+
+const MemoPage = memo(function MemoPage({ pageNumber, scale }: MemoPageProps) {
+  return <Page pageNumber={pageNumber} scale={scale} />;
+});
+
 export function PdfViewer({ url }: PdfViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [scale, setScale] = useState(1.2);
   const [error, setError] = useState<string | null>(null);
-  const scaleRef = useRef(scale);
-  scaleRef.current = scale;
+  // committedScale = scale used by react-pdf (heavy re-render on change)
+  // liveScale = visual scale during pinch (CSS transform, instant)
+  const committedScaleRef = useRef(scale);
+  committedScaleRef.current = scale;
+  const liveScaleRef = useRef(scale);
+  const commitTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const pagesRef = useRef<HTMLDivElement>(null);
+  const transformLayerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   // Auto-hide controls
@@ -56,7 +71,7 @@ export function PdfViewer({ url }: PdfViewerProps) {
     setError('Failed to load PDF');
   }, []);
 
-  // Pinch-to-zoom via Ctrl+wheel
+  // Pinch-to-zoom via Ctrl+wheel — instant CSS zoom, debounced commit
   useEffect(() => {
     const el = pagesRef.current;
     if (!el) return;
@@ -64,11 +79,55 @@ export function PdfViewer({ url }: PdfViewerProps) {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       const delta = -e.deltaY * 0.01;
-      const next = Math.min(5, Math.max(0.3, scaleRef.current + delta));
-      setScale(next);
+      const prev = liveScaleRef.current;
+      const next = Math.min(5, Math.max(0.3, prev + delta));
+      if (next === prev) return;
+      liveScaleRef.current = next;
+
+      // Anchor zoom under the cursor so the point under the mouse stays fixed.
+      const rect = el.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const ratio = next / prev;
+
+      if (transformLayerRef.current) {
+        const mul = next / committedScaleRef.current;
+        // `zoom` reflows layout — scrollbars grow/shrink naturally
+        (transformLayerRef.current.style as any).zoom = String(mul);
+      }
+
+      // Keep cursor position stable: (scroll + c) * ratio - c = new scroll
+      el.scrollLeft = (el.scrollLeft + cx) * ratio - cx;
+      el.scrollTop = (el.scrollTop + cy) * ratio - cy;
+
+      // Debounce the heavy react-pdf re-render
+      clearTimeout(commitTimer.current);
+      commitTimer.current = setTimeout(() => {
+        setScale(liveScaleRef.current);
+      }, 180);
     };
     el.addEventListener('wheel', handler, { passive: false });
-    return () => el.removeEventListener('wheel', handler);
+    return () => {
+      el.removeEventListener('wheel', handler);
+      clearTimeout(commitTimer.current);
+    };
+  }, []);
+
+  // After committed scale re-renders react-pdf, clear the inline zoom
+  useLayoutEffect(() => {
+    liveScaleRef.current = scale;
+    if (transformLayerRef.current) {
+      (transformLayerRef.current.style as any).zoom = '';
+    }
+  }, [scale]);
+
+  // Sync zoom-button clicks to live ref so wheel zoom continues from there
+  const zoomBy = useCallback((delta: number) => {
+    setScale(s => {
+      const next = Math.min(5, Math.max(0.3, s + delta));
+      liveScaleRef.current = next;
+      return next;
+    });
   }, []);
 
   if (error) {
@@ -82,16 +141,18 @@ export function PdfViewer({ url }: PdfViewerProps) {
   return (
     <div className="pdf-viewer" ref={wrapperRef} onMouseMove={resetHideTimer}>
       <div className="pdf-pages" ref={pagesRef}>
-        <Document
-          file={url}
-          onLoadSuccess={onDocumentLoadSuccess}
-          onLoadError={onDocumentLoadError}
-          loading={<div className="loading">Loading PDF...</div>}
-        >
-          {Array.from({ length: numPages }, (_, i) => (
-            <Page key={i + 1} pageNumber={i + 1} scale={scale} />
-          ))}
-        </Document>
+        <div ref={transformLayerRef} className="pdf-transform-layer">
+          <Document
+            file={url}
+            onLoadSuccess={onDocumentLoadSuccess}
+            onLoadError={onDocumentLoadError}
+            loading={<div className="loading">Loading PDF...</div>}
+          >
+            {Array.from({ length: numPages }, (_, i) => (
+              <MemoPage key={i + 1} pageNumber={i + 1} scale={scale} />
+            ))}
+          </Document>
+        </div>
       </div>
 
       <div
@@ -101,14 +162,14 @@ export function PdfViewer({ url }: PdfViewerProps) {
       >
         <button
           className="btn btn-sm"
-          onClick={() => setScale(s => Math.max(0.3, s - 0.2))}
+          onClick={() => zoomBy(-0.2)}
         >
           <ZoomOut size={14} />
         </button>
         <span>{Math.round(scale * 100)}%</span>
         <button
           className="btn btn-sm"
-          onClick={() => setScale(s => Math.min(5, s + 0.2))}
+          onClick={() => zoomBy(0.2)}
         >
           <ZoomIn size={14} />
         </button>

@@ -6,11 +6,14 @@ import { io, Socket } from 'socket.io-client';
 import 'xterm/css/xterm.css';
 import { api } from '../../api/client';
 import { useSocket } from '../../contexts/SocketContext';
-import { Monitor, Unlink, Plus, AlertCircle, Terminal as TerminalIcon, FolderOpen } from 'lucide-react';
+import { useTheme } from '../../contexts/ThemeContext';
+import { Monitor, Unlink, Plus, AlertCircle, Terminal as TerminalIcon, FolderOpen, ArrowLeft } from 'lucide-react';
 
 interface ZellijTerminalProps {
   projectPath: string | null;
   focused?: boolean;
+  autoConnect?: 'new' | string;
+  onBack?: () => void;
 }
 
 interface ZellijSession {
@@ -28,6 +31,20 @@ const TERMINAL_SERVICE_URL = import.meta.env.VITE_TERMINAL_URL ||
 
 const NERD_FONT_FAMILY = '"JetBrains Mono NF", "JetBrains Mono", "Fira Code", monospace';
 
+const DARK_THEME = {
+  background: '#1e1e1e',
+  foreground: '#d4d4d4',
+  cursor: '#d4d4d4',
+  selectionBackground: '#264f78',
+};
+
+const LIGHT_THEME = {
+  background: '#ffffff',
+  foreground: '#24292f',
+  cursor: '#24292f',
+  selectionBackground: '#b6d6fd',
+};
+
 /** Wait for the Nerd Font to be loaded before creating the terminal */
 async function waitForFont(): Promise<void> {
   try {
@@ -38,7 +55,7 @@ async function waitForFont(): Promise<void> {
   }
 }
 
-export function ZellijTerminal({ projectPath, focused }: ZellijTerminalProps) {
+export function ZellijTerminal({ projectPath, focused, autoConnect, onBack }: ZellijTerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -55,6 +72,7 @@ export function ZellijTerminal({ projectPath, focused }: ZellijTerminalProps) {
   const [terminalReady, setTerminalReady] = useState(false);
 
   const { socket: appSocket } = useSocket();
+  const { theme } = useTheme();
 
   // Callback ref to know when terminal container is mounted
   const setTerminalContainer = useCallback((el: HTMLDivElement | null) => {
@@ -137,12 +155,7 @@ export function ZellijTerminal({ projectPath, focused }: ZellijTerminalProps) {
         cursorBlink: true,
         fontSize: 14,
         fontFamily: NERD_FONT_FAMILY,
-        theme: {
-          background: '#1e1e1e',
-          foreground: '#d4d4d4',
-          cursor: '#d4d4d4',
-          selectionBackground: '#264f78',
-        },
+        theme: theme === 'dark' ? DARK_THEME : LIGHT_THEME,
         allowProposedApi: true,
         rightClickSelectsWord: true,
       });
@@ -193,29 +206,25 @@ export function ZellijTerminal({ projectPath, focused }: ZellijTerminalProps) {
     };
     window.addEventListener('resize', handleResize);
 
-    // Suppress browser shortcuts when terminal is focused
+    // Suppress browser shortcuts when terminal is focused — only preventDefault,
+    // NOT stopImmediatePropagation, so xterm.js still receives the keystroke.
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (!target.closest('.xterm-container')) return;
 
-      // Allow Ctrl+Shift+C/V for clipboard
+      // Allow Ctrl+Shift+C/V for clipboard (handled by xterm custom handler)
       if (e.ctrlKey && e.shiftKey && (e.code === 'KeyC' || e.code === 'KeyV')) return;
 
-      const suppressKeys = [
-        'KeyT', 'KeyW', 'KeyN', 'KeyR', 'KeyP', 'KeyF', 'KeyG', 'KeyH', 'KeyJ',
-        'KeyK', 'KeyL', 'KeyQ',
-        'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5',
-        'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Tab',
-      ];
-      if (e.ctrlKey && suppressKeys.includes(e.code)) {
+      // Block browser action for Ctrl+<key> combos that conflict
+      if (e.ctrlKey && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        e.stopImmediatePropagation();
-        return false;
+        return;
       }
+
+      // Block browser action for all Alt combos (zellij uses Alt extensively)
       if (e.altKey) {
         e.preventDefault();
-        e.stopImmediatePropagation();
-        return false;
+        return;
       }
     };
     document.addEventListener('keydown', handleKeyDown, true);
@@ -226,6 +235,13 @@ export function ZellijTerminal({ projectPath, focused }: ZellijTerminalProps) {
       document.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [terminalReady]);
+
+  // Update terminal theme when app theme changes
+  useEffect(() => {
+    if (xtermRef.current) {
+      xtermRef.current.options.theme = theme === 'dark' ? DARK_THEME : LIGHT_THEME;
+    }
+  }, [theme]);
 
   // Focus terminal and refit when focused prop changes
   useEffect(() => {
@@ -242,6 +258,38 @@ export function ZellijTerminal({ projectPath, focused }: ZellijTerminalProps) {
       }, 50);
     }
   }, [focused]);
+
+  // Track connected state in a ref for auto-connect logic
+  const connectedRef = useRef(connected);
+  connectedRef.current = connected;
+
+  // Auto-connect when autoConnect prop changes
+  useEffect(() => {
+    if (!autoConnect || !projectPath) return;
+
+    const timer = setTimeout(() => {
+      if (connectedRef.current) {
+        // Already connected: disconnect first, then reconnect
+        disconnect();
+        setTimeout(() => {
+          if (autoConnect === 'new') {
+            openNewTerminal();
+          } else {
+            connectToSession(autoConnect);
+          }
+        }, 200);
+      } else {
+        if (autoConnect === 'new') {
+          openNewTerminal();
+        } else {
+          connectToSession(autoConnect);
+        }
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoConnect, projectPath]);
 
   const connectToTerminalService = (event: string, data: object, sessionName?: string) => {
     if (!projectPath) {
@@ -368,6 +416,15 @@ export function ZellijTerminal({ projectPath, focused }: ZellijTerminalProps) {
 
   return (
     <div className="zellij-terminal">
+      {onBack && (
+        <div className="zellij-mobile-header">
+          <button className="zellij-back-btn" onClick={onBack}>
+            <ArrowLeft size={16} />
+            Back
+          </button>
+        </div>
+      )}
+
       {error && (
         <div className="zellij-error">
           <AlertCircle size={14} />
